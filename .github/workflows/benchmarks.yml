@@ -9,7 +9,7 @@ on:
 
 jobs:
   benchmarks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     env:
       BOATHOOK_BENCHMARK_OUT_DIR: .benchmarks/ci

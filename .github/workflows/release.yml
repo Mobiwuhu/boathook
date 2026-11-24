@@ -34,7 +34,7 @@ permissions:
 jobs:
   build:
     name: Build and verify a release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     outputs:
       version: ${{ steps.version.outputs.version }}
