@@ -30,8 +30,8 @@ export async function handleDesignAudit(
 	if (!extractOnly && (tokensIdx === -1 || tokensIdx + 1 >= args.length)) {
 		return {
 			ok: false,
-			error: `Usage: boathook --session NAME design-audit --tokens <tokens.json> [--check colors,fonts] [--selector <sel>] [--json]
-       boathook --session NAME design-audit --extract [--json]
+			error: `Usage: boathook [--json] --session NAME design-audit --tokens <tokens.json> [--check colors,fonts] [--selector <sel>]
+       boathook [--json] --session NAME design-audit --extract
 
 Compares live page computed styles against design tokens.
 

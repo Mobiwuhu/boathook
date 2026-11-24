@@ -73,7 +73,7 @@ async function command(...args: string[]) {
 }
 
 async function run(...args: string[]) {
-	const result = await command(...args, "--json");
+	const result = await command("--json", ...args);
 	assert.equal(result.code, 0, JSON.stringify({ args, ...result }));
 	return JSON.parse(result.stdout).data;
 }
@@ -219,10 +219,10 @@ export default async ({ page, context, input }) => {
 		["restart", "qa"],
 	]) {
 		const rejected = await command(
+			"--json",
 			...args,
 			"--config-json",
 			badConfig,
-			"--json",
 		);
 		assert.notEqual(rejected.code, 0);
 		assert.equal(
@@ -239,6 +239,7 @@ export default async ({ page, context, input }) => {
 	const diagnostics = await Promise.all(
 		["http", "ws"].map((transport) =>
 			command(
+				"--json",
 				"--session",
 				"qa",
 				"plugin",
@@ -248,7 +249,6 @@ export default async ({ page, context, input }) => {
 				"127.0.0.1",
 				"--transport",
 				transport,
-				"--json",
 			),
 		),
 	);
@@ -259,6 +259,7 @@ export default async ({ page, context, input }) => {
 	const before = await changed("list");
 	const savedBefore = await session("qa", "config", "inspect");
 	const result = await command(
+		"--json",
 		"--session",
 		"qa",
 		"plugin",
@@ -267,7 +268,6 @@ export default async ({ page, context, input }) => {
 		"add",
 		"--regex",
 		"(?=localhost)",
-		"--json",
 	);
 	assert.equal(
 		JSON.parse(result.stdout).error.code,

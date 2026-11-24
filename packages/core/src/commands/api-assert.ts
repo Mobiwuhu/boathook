@@ -33,7 +33,7 @@ Flags:
   --max-size <size>          Max response size (e.g., 500kb, 1mb)
   --header <name: value>     Expected response header
   --timeout <ms>             Wait timeout (default: 10000)
-  --json                     JSON output`,
+  --json                     Global JSON output option`,
 		};
 	}
 

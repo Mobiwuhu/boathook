@@ -25,10 +25,10 @@ const batchFile = createBatchFile(outDir, "warm-batch.json", [
 
 await withBenchmarkSession(welcomeUrl, async ({ run, startupMs }) => {
 	const benchmarkRun = await run([
+		"--json",
 		"benchmark",
 		"--iterations",
 		String(iterations),
-		"--json",
 	]);
 	assertSuccess(benchmarkRun, "benchmark");
 
@@ -41,13 +41,13 @@ await withBenchmarkSession(welcomeUrl, async ({ run, startupMs }) => {
 	const navigateWarm = await run(["goto", testPageUrl]);
 	assertSuccess(navigateWarm, "warm goto");
 
-	const snapshotFirst = await run(["snapshot", "--json"]);
+	const snapshotFirst = await run(["--json", "snapshot"]);
 	assertSuccess(snapshotFirst, "first snapshot");
 
-	const snapshotCached = await run(["snapshot", "--json"]);
+	const snapshotCached = await run(["--json", "snapshot"]);
 	assertSuccess(snapshotCached, "cached snapshot");
 
-	const batchRun = await run(["batch", batchFile, "--json"]);
+	const batchRun = await run(["--json", "batch", batchFile]);
 	assertSuccess(batchRun, "batch warm path");
 
 	const report = {

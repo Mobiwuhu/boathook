@@ -3,7 +3,10 @@ import {
 	formatBatchOutput,
 	parseBatchArgs,
 } from "../apps/cli/src/cli/batch.ts";
-import { parseArgs } from "../apps/cli/src/cli/parse.ts";
+import {
+	jsonForInvalidGlobalArgs,
+	parseArgs,
+} from "../apps/cli/src/cli/parse.ts";
 
 describe("parseArgs", () => {
 	test("parses goto command with URL", () => {
@@ -18,7 +21,7 @@ describe("parseArgs", () => {
 	});
 
 	test("treats a bare URL as goto shorthand", () => {
-		const result = parseArgs(["https://example.com", "--timeout", "60000"]);
+		const result = parseArgs(["--timeout", "60000", "https://example.com"]);
 		expect(result).toEqual({
 			cmd: "goto",
 			args: ["https://example.com"],
@@ -127,12 +130,12 @@ describe("parseArgs", () => {
 		});
 	});
 
-	test("extracts --timeout flag from args", () => {
+	test("extracts --timeout before the command", () => {
 		const result = parseArgs([
-			"goto",
-			"https://example.com",
 			"--timeout",
 			"60000",
+			"goto",
+			"https://example.com",
 		]);
 		expect(result).toEqual({
 			cmd: "goto",
@@ -141,19 +144,6 @@ describe("parseArgs", () => {
 			session: undefined,
 			json: false,
 		});
-	});
-
-	test("--timeout flag is removed from args", () => {
-		const result = parseArgs([
-			"goto",
-			"https://example.com",
-			"--timeout",
-			"5000",
-		]);
-		if (result && "args" in result) {
-			expect(result.args).not.toContain("--timeout");
-			expect(result.args).not.toContain("5000");
-		}
 	});
 
 	test.each([
@@ -165,7 +155,7 @@ describe("parseArgs", () => {
 		"2147483648",
 	])("rejects invalid timeout %s", (timeout) => {
 		expect(() =>
-			parseArgs(["goto", "https://example.com", "--timeout", timeout]),
+			parseArgs(["--timeout", timeout, "goto", "https://example.com"]),
 		).toThrow(expect.objectContaining({ code: "INVALID_ARGUMENTS" }));
 	});
 
@@ -173,22 +163,23 @@ describe("parseArgs", () => {
 		"--timeout",
 		"--session",
 	])("rejects a missing value for %s", (flag) => {
-		expect(() => parseArgs(["goto", "https://example.com", flag])).toThrow(
+		expect(() => parseArgs([flag])).toThrow(
 			expect.objectContaining({ code: "INVALID_ARGUMENTS" }),
 		);
 	});
 
-	test("--timeout in middle of args", () => {
+	test("preserves a command's own --timeout", () => {
 		const result = parseArgs([
-			"screenshot",
+			"plugin",
+			"report",
+			"export",
 			"--timeout",
 			"10000",
-			"/tmp/shot.png",
 		]);
 		expect(result).toEqual({
-			cmd: "screenshot",
-			args: ["/tmp/shot.png"],
-			timeout: 10000,
+			cmd: "plugin",
+			args: ["report", "export", "--timeout", "10000"],
+			timeout: undefined,
 			session: undefined,
 			json: false,
 		});
@@ -205,12 +196,12 @@ describe("parseArgs", () => {
 		});
 	});
 
-	test("extracts --session flag from args", () => {
+	test("extracts --session before the command", () => {
 		const result = parseArgs([
-			"goto",
-			"https://example.com",
 			"--session",
 			"worker-1",
+			"goto",
+			"https://example.com",
 		]);
 		expect(result).toEqual({
 			cmd: "goto",
@@ -221,8 +212,8 @@ describe("parseArgs", () => {
 		});
 	});
 
-	test("extracts --json flag from args", () => {
-		const result = parseArgs(["snapshot", "--json"]);
+	test("extracts --json before the command", () => {
+		const result = parseArgs(["--json", "snapshot"]);
 		expect(result).toEqual({
 			cmd: "snapshot",
 			args: [],
@@ -234,12 +225,12 @@ describe("parseArgs", () => {
 
 	test("combines --session, --timeout, and --json", () => {
 		const result = parseArgs([
-			"url",
 			"--session",
 			"s1",
 			"--timeout",
 			"5000",
 			"--json",
+			"url",
 		]);
 		expect(result).toEqual({
 			cmd: "url",
@@ -254,11 +245,11 @@ describe("parseArgs", () => {
 		expect(
 			parseArgs([
 				"--session=qa",
-				"click",
-				"@e1",
 				"--tab=t1",
 				"--snapshot-id=s1",
 				"--format=json",
+				"click",
+				"@e1",
 			]),
 		).toMatchObject({
 			cmd: "click",
@@ -272,12 +263,12 @@ describe("parseArgs", () => {
 
 	test("duplicate --session flags uses the last value", () => {
 		const result = parseArgs([
-			"goto",
-			"https://example.com",
 			"--session",
 			"first",
 			"--session",
 			"second",
+			"goto",
+			"https://example.com",
 		]);
 		expect(result).toEqual({
 			cmd: "goto",
@@ -288,7 +279,6 @@ describe("parseArgs", () => {
 		});
 	});
 
-	// Issue #46: Global flags placed before the command name
 	test("--timeout before command is parsed correctly", () => {
 		const result = parseArgs(["--timeout", "5000", "title"]);
 		expect(result).toEqual({
@@ -341,22 +331,54 @@ describe("parseArgs", () => {
 		});
 	});
 
-	test("global flags mixed before and after command", () => {
+	test("the host and plugin can both use --format", () => {
 		const result = parseArgs([
 			"--timeout",
 			"3000",
-			"screenshot",
 			"--session",
-			"s2",
-			"/tmp/shot.png",
+			"plugin",
+			"--format",
+			"json",
+			"plugin",
+			"report",
+			"export",
+			"--format",
+			"xml",
 		]);
 		expect(result).toEqual({
-			cmd: "screenshot",
-			args: ["/tmp/shot.png"],
+			cmd: "plugin",
+			args: ["report", "export", "--format", "xml"],
 			timeout: 3000,
-			session: "s2",
-			json: false,
+			session: "plugin",
+			json: true,
 		});
+	});
+
+	test("honors explicit text output and negated booleans", () => {
+		expect(parseArgs(["--json", "--format=text", "help"]).json).toBe(false);
+		expect(parseArgs(["--json", "--no-json", "help"]).json).toBe(false);
+		expect(parseArgs(["--json=true", "--help"]).json).toBe(true);
+	});
+
+	test("only uses leading output flags for errors in global options", () => {
+		expect(
+			jsonForInvalidGlobalArgs([
+				"--timeout",
+				"bad",
+				"plugin",
+				"report",
+				"export",
+				"--format",
+				"json",
+			]),
+		).toBe(false);
+		expect(jsonForInvalidGlobalArgs(["--format=json", "--timeout"])).toBe(true);
+		expect(
+			jsonForInvalidGlobalArgs(["--json", "--format=text", "--session"]),
+		).toBe(false);
+		expect(jsonForInvalidGlobalArgs(["--session", "--json", "--timeout"])).toBe(
+			false,
+		);
 	});
 
 	test("preserves the monitor command config path", () => {

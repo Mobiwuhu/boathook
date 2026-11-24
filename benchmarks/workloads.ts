@@ -27,7 +27,7 @@ const workloads = [
 		batch: [
 			{ cmd: "goto", args: [fixtureUrl("register.html")] },
 			{ cmd: "trace", args: ["start", "--snapshots", "--screenshots"] },
-			{ cmd: "snapshot", args: ["--json"] },
+			{ cmd: "snapshot", args: [], json: true },
 			{
 				cmd: "screenshot",
 				args: [join(screenshotDir, "artifact-capture.png")],
@@ -63,7 +63,7 @@ await withBenchmarkSession(fixtureUrl("welcome.html"), async ({ run }) => {
 			`${workload.name}.json`,
 			workload.batch,
 		);
-		const result = await run(["batch", batchFile, "--json"]);
+		const result = await run(["--json", "batch", batchFile]);
 		assertSuccess(result, workload.name);
 		results.push({
 			name: workload.name,

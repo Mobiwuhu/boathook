@@ -4,7 +4,7 @@ Pass the starting settings as JSON when creating a session.
 
 ~~~bash
 boathook start qa --config-json '{"url":"https://example.com"}'
-boathook --session qa config inspect --json
+boathook --json --session qa config inspect
 ~~~
 
 Use `--config-json -` to read the JSON from standard input. A session can also be started with `--url` and the other individual launch flags. boathook keeps the settings in its private `sessions/<id>/session.json` under `~/.boathook/`. The inspection command shows the actual path and revision. Stopping and reopening a session restores its saved settings.
@@ -16,7 +16,7 @@ An installed plugin can be selected by ID in the starting JSON.
 ~~~bash
 boathook start qa --config-json '{"plugins":[{"id":"headers"}]}'
 boathook --session qa plugin headers set x-debug-mode preview
-boathook --session qa config inspect --plugin headers --json
+boathook --json --session qa config inspect --plugin headers
 ~~~
 
 A plugin configuration command validates and applies the new options to the active browser, then saves them. A failed update retains the previous settings. Browser actions and queries use their own command handlers. Each session keeps its own copy of the options. [Plugins](plugins.md)
@@ -84,7 +84,7 @@ A flow runs a sequence of browser steps. A healthcheck visits configured pages a
 boathook start qa --config-json - < session.json
 boathook --session qa flow smoke --var url=https://example.com \
   --var 'expected_text=Example Domain'
-boathook --session qa healthcheck --var url=https://example.com --json
+boathook --json --session qa healthcheck --var url=https://example.com
 ```
 
 Put a flow definition in `flows/NAME.json` to run it by filename. Inline flows take precedence over project files, which take precedence over global files. Use `boathook --session qa flow list` to see the source and `flow init smoke page-smoke` to generate a starter in the project directory. Restart a session after editing files outside boathook to load the changes. [Flow and healthcheck schemas](../packages/core/src/config/schema.ts)

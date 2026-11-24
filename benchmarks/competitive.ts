@@ -32,7 +32,7 @@ async function runBoathookScenario(): Promise<number[]> {
 	return withBenchmarkSession(scenarioUrl, async ({ run }) => {
 		const durations: number[] = [];
 		for (let i = 0; i < iterations; i++) {
-			const result = await run(["batch", batchFile, "--json"]);
+			const result = await run(["--json", "batch", batchFile]);
 			assertSuccess(result, `boathook scenario ${i + 1}`);
 			durations.push(result.durationMs);
 		}

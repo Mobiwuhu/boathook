@@ -1,8 +1,9 @@
-import {
-	type CommandDescription,
-	commandFlags,
-	globalFlags,
-} from "./cli/discovery.ts";
+import { type CommandDescription, commandFlags } from "./cli/discovery.ts";
+import { globalFlags, globalOptionSpecs } from "./cli/options.ts";
+
+const valueFlags = globalOptionSpecs
+	.filter(({ takesValue }) => takesValue)
+	.map(({ flag }) => flag);
 
 function generateBashCompletions(entries: Map<string, string[]>): string {
 	const COMMANDS = [...entries.keys()];
@@ -11,10 +12,10 @@ function generateBashCompletions(entries: Map<string, string[]>): string {
 
 	const cases: string[] = [];
 	for (const cmd of COMMANDS) {
-		const flags = [...(entries.get(cmd) ?? []), ...globalFlags];
+		const flags = entries.get(cmd) ?? [];
 		if (flags.length > 0) {
 			cases.push(
-				`        ${cmd})\n            COMPREPLY=( $(compgen -W "${flags.join(" ")}" -- "$cur") )`,
+				`        ${cmd})\n            COMPREPLY=( $(compgen -W "${flags.join(" ")}" -- "$cur") )\n            ;;`,
 			);
 		}
 	}
@@ -23,19 +24,16 @@ function generateBashCompletions(entries: Map<string, string[]>): string {
 # Add to ~/.bashrc: eval "$(boathook completions bash)"
 
 _boathook_completions() {
-    local cur prev cmd
+    local cur cmd i
     COMPREPLY=()
     cur="\${COMP_WORDS[COMP_CWORD]}"
-    prev="\${COMP_WORDS[COMP_CWORD-1]}"
 
     # Find the command (first non-flag argument after 'boathook')
     cmd=""
     for ((i=1; i < COMP_CWORD; i++)); do
         case "\${COMP_WORDS[i]}" in
-            ${globalFlags.filter((flag) => flag !== "--json").join("|")})
+            ${valueFlags.join("|")})
                 ((i++))
-                ;;
-            --json)
                 ;;
             -*)
                 ;;
@@ -59,11 +57,7 @@ _boathook_completions() {
     # Complete flags for the matched command
     if [[ "$cur" == -* ]]; then
         case "$cmd" in
-${cases.join("\n            ;;\n")}
-            ;;
-            *)
-                COMPREPLY=( $(compgen -W "${globalList}" -- "$cur") )
-                ;;
+${cases.join("\n")}
         esac
     fi
 
@@ -85,7 +79,7 @@ function generateZshCompletions(entries: Map<string, string[]>): string {
 
 	const flagCases: string[] = [];
 	for (const cmd of COMMANDS) {
-		const flags = [...(entries.get(cmd) ?? []), ...globalFlags];
+		const flags = entries.get(cmd) ?? [];
 		if (flags.length > 0) {
 			const flagArgs = flags.map((f) => `'${f}'`).join(" ");
 			flagCases.push(
@@ -108,10 +102,8 @@ ${cmdDescriptions.join("\n")}
     local i
     for ((i=2; i < CURRENT; i++)); do
         case "\${words[i]}" in
-            ${globalFlags.filter((flag) => flag !== "--json").join("|")})
+            ${valueFlags.join("|")})
                 ((i++))
-                ;;
-            --json)
                 ;;
             -*)
                 ;;
@@ -134,9 +126,6 @@ ${cmdDescriptions.join("\n")}
     # Complete flags for the command
     case "$cmd" in
 ${flagCases.join("\n")}
-        *)
-            compadd -- ${globalFlags.join(" ")}
-            ;;
     esac
 }
 
@@ -153,16 +142,33 @@ function generateFishCompletions(entries: Map<string, string[]>): string {
 		"# Disable file completions by default",
 		"complete -c boathook -f",
 		"",
-		"# Helper: returns true when no subcommand has been given yet",
-		"function __boathook_no_subcommand",
-		`    set -l cmds ${COMMANDS.join(" ")}`,
+		"function __boathook_command",
 		"    set -l tokens (commandline -opc)",
+		"    set -l skip_value 0",
 		"    for t in $tokens[2..]",
-		"        if contains -- $t $cmds",
-		"            return 1",
+		"        if test $skip_value -eq 1",
+		"            set skip_value 0",
+		"            continue",
+		"        end",
+		"        switch $t",
+		`            case ${valueFlags.join(" ")}`,
+		"                set skip_value 1",
+		"            case '-*'",
+		"            case '*'",
+		"                echo $t",
+		"                return 0",
 		"        end",
 		"    end",
-		"    return 0",
+		"    return 1",
+		"end",
+		"",
+		"function __boathook_no_subcommand",
+		"    not __boathook_command >/dev/null",
+		"end",
+		"",
+		"function __boathook_has_command",
+		"    set -l cmd (__boathook_command)",
+		'    test "$cmd" = "$argv[1]"',
 		"end",
 		"",
 	];
@@ -174,10 +180,10 @@ function generateFishCompletions(entries: Map<string, string[]>): string {
 
 	lines.push("");
 
-	// Global flags (available everywhere)
+	// Global flags only before the command.
 	for (const flag of globalFlags) {
 		const name = flag.replace(/^--/, "");
-		lines.push(`complete -c boathook -l '${name}'`);
+		lines.push(`complete -c boathook -n __boathook_no_subcommand -l '${name}'`);
 	}
 
 	lines.push("");
@@ -186,17 +192,15 @@ function generateFishCompletions(entries: Map<string, string[]>): string {
 	for (const cmd of COMMANDS) {
 		const flags = entries.get(cmd) ?? [];
 		for (const flag of flags) {
-			// Skip flags already covered by globals
-			if (globalFlags.includes(flag)) continue;
 			if (flag.startsWith("--")) {
 				const name = flag.replace(/^--/, "");
 				lines.push(
-					`complete -c boathook -n '__fish_seen_subcommand_from ${cmd}' -l '${name}'`,
+					`complete -c boathook -n '__boathook_has_command ${cmd}' -l '${name}'`,
 				);
 			} else if (flag.startsWith("-")) {
 				const name = flag.replace(/^-/, "");
 				lines.push(
-					`complete -c boathook -n '__fish_seen_subcommand_from ${cmd}' -s '${name}'`,
+					`complete -c boathook -n '__boathook_has_command ${cmd}' -s '${name}'`,
 				);
 			}
 		}

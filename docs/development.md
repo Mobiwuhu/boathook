@@ -27,7 +27,20 @@ On Linux x86-64, run `bun run test:release dist/boathook-linux-x64-*.tar.gz` aft
 
 ## Publish and verify upgrades
 
-Set the version in `apps/cli/package.json` and push its matching `vMAJOR.MINOR.PATCH` tag. The release workflow builds and installs the Linux archive before publishing it to GitHub Releases. The artifact records the workflow repository. Set `BOATHOOK_RELEASE_REPO=OWNER/REPO` when building a distribution outside GitHub Actions.
+Open **Actions → Release boathook → Run workflow**. Choose `initial` to use the current version for the first release. Choose `patch`, `minor`, or `major` to let Bun calculate the next version. The workflow applies that version to the CLI, `@boathook/plugin-sdk`, and `@boathook/headers`, then builds and installs the three artifacts for verification.
+
+**Dry run** is enabled by default. The `boathook-release` Actions artifact contains the Linux x86-64 archive and two npm tarballs. To publish from `main`, set the repository's `NPM_TOKEN` Actions secret to an npm token with publish access to both scoped packages and disable **Dry run**. The workflow pushes the verified version commit and tag, publishes the npm packages, and attaches the standard CLI archive to GitHub Releases. The repository must allow the workflow to push the release commit to `main`.
+
+An existing `vMAJOR.MINOR.PATCH` tag can also trigger the same workflow when pushed. The tag must match all three package versions. After a partial publish failure, use **Re-run failed jobs** on the existing run to reuse the verified artifacts. The publisher checks the integrity of any existing npm version before skipping it.
+
+On Linux x86-64, reproduce the release build and installation checks locally.
+
+```bash
+bun run release --npm-packages
+BOATHOOK_SMOKE_NPM_DIR=dist/npm bun run test:release dist/boathook-linux-x64-X.Y.Z.tar.gz
+```
+
+Set `BOATHOOK_RELEASE_REPO=OWNER/REPO` when building a distribution outside GitHub Actions so installed CLI releases can check the correct repository for upgrades.
 
 The archive includes the project license and Bun license in `licenses/`. The release build uses the compiler's module list to collect notices for bundled dependencies and writes their versions, licenses, and MPL source links in `licenses/THIRD-PARTY.md`. Bundled plugin packages carry their notices alongside their compiled entry points.
 
@@ -49,4 +62,4 @@ Run `bun run check:fix` for formatting and import sorting. Install the repositor
 
 ## Tested runtime
 
-For a quick product check, run `./dist/boathook doctor --json`. The session suite covers CLI help, session reopen, login templates, command deadlines, tabs, scripts, and plugin installation. The network suite observes HTTP, HTTPS, WebSocket, and secure WebSocket handshake headers on its local servers.
+For a quick product check, run `./dist/boathook --json doctor`. The session suite covers CLI help, session reopen, login templates, command deadlines, tabs, scripts, and plugin installation. The network suite observes HTTP, HTTPS, WebSocket, and secure WebSocket handshake headers on its local servers.

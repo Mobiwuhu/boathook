@@ -114,7 +114,7 @@ async function checkOfflineQueries(): Promise<void> {
 	assert.match(await run("--version"), /^boathook /);
 	assert.match(
 		await run("help", "snapshot"),
-		/boathook --session NAME snapshot/,
+		/boathook \[--json\] --session NAME snapshot/,
 	);
 	assert.ok((await run("help", "help")).includes("boathook help [COMMAND]"));
 	assert.match(await run("help", "version"), /boathook version/);
@@ -129,7 +129,7 @@ async function checkOfflineQueries(): Promise<void> {
 	}
 	assert.match(await run("restart", "qa", "--help"), /--idle-timeout/);
 	assert.match(await run("completions", "bash"), /--idle-timeout/);
-	const discovered = JSON.parse(await run("--llms-full", "--json")).data;
+	const discovered = JSON.parse(await run("--json", "--llms-full")).data;
 	for (const name of [
 		"click",
 		"snapshot",
@@ -152,8 +152,11 @@ async function checkOfflineQueries(): Promise<void> {
 			),
 		);
 	}
-	assert.deepEqual(JSON.parse(await run("ls", "--format=json")).data, []);
-	const missingName = await command(["start", "--json"]);
+	assert.deepEqual(JSON.parse(await run("--format=json", "ls")).data, []);
+	const lateFormat = await command(["ls", "--format", "json"]);
+	assert.equal(lateFormat.code, 2);
+	assert.match(lateFormat.err, /^INVALID_ARGUMENTS:/);
+	const missingName = await command(["--json", "start"]);
 	assert.equal(missingName.code, 2);
 	assert.equal(JSON.parse(missingName.out).error.code, "VALIDATION_ERROR");
 	assert.equal(await readFile(occupied, "utf8"), "occupied");
@@ -169,8 +172,8 @@ async function clickCheck(session: string): Promise<void> {
 
 async function checkSessions(url: string) {
 	const [one, two] = await Promise.all([
-		run("start", "qa", "--url", url, "--json"),
-		run("start", "qa", "--url", url, "--json"),
+		run("--json", "start", "qa", "--url", url),
+		run("--json", "start", "qa", "--url", url),
 	]);
 	const first = JSON.parse(one).data;
 	assert.equal(first.state, "running");
@@ -185,7 +188,7 @@ async function checkSessions(url: string) {
 	await run("start", "qb", "--url", url);
 	assert.equal(await run("--session", "qb", "title"), "Smoke ready");
 	await run("stop", "qa");
-	const stopped = await command(["--session", "qa", "title", "--json"]);
+	const stopped = await command(["--json", "--session", "qa", "title"]);
 	assert.equal(stopped.code, 2);
 	assert.equal(JSON.parse(stopped.out).error.code, "SESSION_STOPPED");
 	await run("start", "qa");
@@ -200,9 +203,9 @@ async function checkSessions(url: string) {
 		]),
 	);
 	const batch = JSON.parse(
-		await run("--session", "qa", "batch", "commands.json", "--json"),
+		await run("--json", "--session", "qa", "batch", "commands.json"),
 	);
-	const status = JSON.parse(await run("status", "qa", "--json")).data;
+	const status = JSON.parse(await run("--json", "status", "qa")).data;
 	assert.deepEqual(
 		batch.data.batch.map((item: { data: unknown }) => item.data),
 		[{ text: "Smoke restored" }, { text: url }, status],
@@ -211,7 +214,7 @@ async function checkSessions(url: string) {
 
 async function checkIdleShutdown(url: string) {
 	const restarted = JSON.parse(
-		await run("restart", "qa", "--idle-timeout", "2", "--json"),
+		await run("--json", "restart", "qa", "--idle-timeout", "2"),
 	).data;
 	assert.equal(restarted.idleTimeout, 2);
 	assert.equal(
@@ -225,7 +228,7 @@ async function checkIdleShutdown(url: string) {
 	);
 
 	const status = async () =>
-		JSON.parse(await run("status", "qa", "--json")).data;
+		JSON.parse(await run("--json", "status", "qa")).data;
 	let current = await status();
 	const deadline = Date.now() + 8_000;
 	while (current.state === "running" && Date.now() < deadline) {
@@ -259,7 +262,7 @@ async function checkDispatch() {
 				invalid,
 			]),
 		);
-		const result = await command([...scoped, "batch", batchPath, "--json"]);
+		const result = await command(["--json", ...scoped, "batch", batchPath]);
 		assert.equal(result.code, 2, result.out);
 		assert.equal(JSON.parse(result.out).error.code, "INVALID_ARGUMENTS");
 	}
@@ -284,7 +287,7 @@ async function checkDispatch() {
 		}),
 	);
 	try {
-		const timeout = await command([...scoped, "batch", batchPath, "--json"]);
+		const timeout = await command(["--json", ...scoped, "batch", batchPath]);
 		assert.equal(timeout.code, 3, timeout.out);
 		const receipt = JSON.parse(timeout.out);
 		assert.equal(receipt.ok, false);
@@ -295,12 +298,12 @@ async function checkDispatch() {
 		assert.equal(stoppedEarly, true);
 		assert.equal(await Bun.file(started).text(), "started");
 		const queued = await command([
+			"--json",
 			...scoped,
 			"--timeout",
 			"50",
 			"eval",
 			'document.body.dataset.queued = "unexpected"',
-			"--json",
 		]);
 		assert.equal(queued.code, 3, queued.out);
 		assert.equal(JSON.parse(queued.out).error.code, "COMMAND_NOT_STARTED");
@@ -332,7 +335,7 @@ async function checkPaths() {
 		JSON.stringify([{ cmd: "screenshot", args: ["--viewport", "batch.png"] }]),
 	);
 	const batch = await command(
-		[...scoped, "batch", "paths.json", "--json"],
+		["--json", ...scoped, "batch", "paths.json"],
 		undefined,
 		caller,
 	);
@@ -345,7 +348,7 @@ async function checkPaths() {
 		assert(await Bun.file(join(caller, file)).exists());
 		assert(!(await Bun.file(join(scratch, file)).exists()));
 	}
-	const ci = await command(["ci-init", "--json"], undefined, caller);
+	const ci = await command(["--json", "ci-init"], undefined, caller);
 	assert.equal(ci.code, 0, ci.out);
 	assert.equal(
 		JSON.parse(ci.out).data.path,
@@ -420,11 +423,11 @@ async function checkCommandConfig(url: string): Promise<void> {
 	);
 	const validated = JSON.parse(
 		await run(
+			"--json",
 			"config",
 			"validate",
 			"--config-json",
 			JSON.stringify(settings),
-			"--json",
 		),
 	).data;
 	assert.equal(validated.valid, true);
@@ -488,7 +491,7 @@ async function checkCommandConfig(url: string): Promise<void> {
 			"json",
 		],
 	]) {
-		const result = await command([...scoped, ...args, "--json"]);
+		const result = await command(["--json", ...scoped, ...args]);
 		assert.notEqual(result.code, 0, result.out);
 		assert.match(result.out, /BOATHOOK_TRUST_PROJECT_CONFIG/);
 	}
@@ -509,7 +512,7 @@ async function checkCommandConfig(url: string): Promise<void> {
 	healthcheckPage.name = "Updated smoke page";
 	const next = JSON.stringify(settings);
 	const rejected = await command(
-		["start", name, "--config-json", next, "--json"],
+		["--json", "start", name, "--config-json", next],
 		undefined,
 		dir,
 	);
@@ -579,13 +582,13 @@ async function checkRun() {
 	const input = { filter: [true, null, "筛选"] };
 	const result = await command(
 		[
+			"--json",
 			"--session",
 			"qa",
 			"run",
 			script,
 			"--input",
 			"-",
-			"--json",
 			"--",
 			"--json",
 			"two words",
@@ -606,13 +609,13 @@ async function checkRun() {
 	);
 	const edited = JSON.parse(
 		await run(
+			"--json",
 			"--session",
 			"qa",
 			"run",
 			script,
 			"--input-json",
 			"null",
-			"--json",
 		),
 	);
 	assert.equal(edited.data.title, "updated script");
@@ -628,7 +631,7 @@ async function checkRun() {
 		]),
 	);
 	const { batch } = JSON.parse(
-		await run("--session=qa", "batch", batchFile, "--format=json"),
+		await run("--format=json", "--session=qa", "batch", batchFile),
 	).data;
 	assert.deepEqual(batch[0].data, { ...edited.data, input, args: ["one"] });
 }
@@ -636,7 +639,7 @@ async function checkRun() {
 async function checkTabs() {
 	const session = ["--session", "qb"];
 	const [first] = JSON.parse(
-		await run(...session, "tab", "list", "--json"),
+		await run("--json", ...session, "tab", "list"),
 	).data;
 	await run(
 		...session,
@@ -645,36 +648,36 @@ async function checkTabs() {
 		"data:text/html,<title>Second tab</title><button>Other</button>",
 	);
 	const [, second] = JSON.parse(
-		await run(...session, "tab", "list", "--json"),
+		await run("--json", ...session, "tab", "list"),
 	).data;
 	const one = [...session, "--tab", first.tabId];
 	const two = [...session, "--tab", second.tabId];
 	const { data: snapshot } = JSON.parse(
-		await run(...one, "snapshot", "-i", "--json"),
+		await run("--json", ...one, "snapshot", "-i"),
 	);
 	assert.equal(snapshot.tabId, first.tabId);
 	const button = snapshot.nodes.find(
 		({ name }: { name: string }) => name === "Run check",
 	);
 	assert(button?.ref);
-	await run(...two, "snapshot", "-i", "--json");
+	await run("--json", ...two, "snapshot", "-i");
 	await run(...one, "--snapshot-id", snapshot.snapshotId, "click", button.ref);
 	assert.equal(await run(...one, "title"), "Smoke clicked");
 	assert.equal(await run(...session, "title"), "Second tab");
 	const stale = await command([
+		"--json",
 		...one,
 		"--snapshot-id",
 		snapshot.snapshotId,
 		"click",
 		button.ref,
-		"--json",
 	]);
 	assert.equal(JSON.parse(stale.out).error.code, "STALE_REF");
 	await run("stop", "qb");
 	await run("start", "qb");
 	assert.equal(await run(...two, "title"), "Second tab");
 	await run(...session, "tab", "close", second.tabId);
-	const gone = await command([...two, "title", "--json"]);
+	const gone = await command(["--json", ...two, "title"]);
 	assert.equal(JSON.parse(gone.out).error.code, "TAB_GONE");
 	await run(
 		...one,
@@ -683,7 +686,7 @@ async function checkTabs() {
 		await page.getByRole("button", { name: "Open popup" }).click();
 		await (await popup).waitForLoadState("domcontentloaded"); return true;`,
 	);
-	const tabs = JSON.parse(await run(...session, "tab", "list", "--json")).data;
+	const tabs = JSON.parse(await run("--json", ...session, "tab", "list")).data;
 	const popup = tabs.find(
 		({ url }: { url: string }) => new URL(url).pathname === "/popup",
 	);
@@ -699,7 +702,7 @@ async function checkTabs() {
 	await run(...session, "run", script);
 	await run(...session, "benchmark", "--iterations", "1");
 	const opened = JSON.parse(
-		await run(...session, "tab", "list", "--json"),
+		await run("--json", ...session, "tab", "list"),
 	).data;
 	assert.equal(opened.length, 3);
 	assert(opened.some(({ title }: { title: string }) => title === "Script tab"));
@@ -709,7 +712,7 @@ async function checkTabs() {
 	assert.equal(new URL(await run(...popupTarget, "url")).pathname, "/popup");
 	await run(...popupTarget, "page-eval", "page.close()");
 	const remaining = JSON.parse(
-		await run(...session, "tab", "list", "--json"),
+		await run("--json", ...session, "tab", "list"),
 	).data;
 	assert.equal(remaining.length, 2);
 	assert(
@@ -719,7 +722,7 @@ async function checkTabs() {
 
 async function checkTemplate(url: string) {
 	const login = JSON.parse(
-		await run("template", "login", "saved", "--url", url, "--json"),
+		await run("--json", "template", "login", "saved", "--url", url),
 	).data;
 	assert.equal(login.state, "in_progress");
 	sessions.add(login.loginSession);
@@ -732,29 +735,29 @@ async function checkTemplate(url: string) {
 	);
 	const saved = JSON.parse(
 		await run(
+			"--json",
 			"template",
 			"save",
 			"saved",
 			"--from-session",
 			login.loginSession,
-			"--json",
 		),
 	).data;
 	assert.equal(saved.state, "unchecked");
-	const listed = JSON.parse(await run("template", "ls", "--json")).data;
+	const listed = JSON.parse(await run("--json", "template", "ls")).data;
 	assert.equal(listed[0].version, saved.version);
 	sessions.add("derived");
 	const failed = await command([
+		"--json",
 		"start",
 		"derived",
 		"--template",
 		"saved",
 		"--config-json",
 		'{"login":{"check":"./missing-check.ts"}}',
-		"--json",
 	]);
 	assert.equal(JSON.parse(failed.out).error.code, "LOGIN_CHECK_NOT_FOUND");
-	const failedStatus = await command(["status", "derived", "--json"]);
+	const failedStatus = await command(["--json", "status", "derived"]);
 	assert.equal(JSON.parse(failedStatus.out).error.code, "SESSION_NOT_FOUND");
 	assert(
 		!(await Bun.file(
@@ -763,6 +766,7 @@ async function checkTemplate(url: string) {
 	);
 	const derived = JSON.parse(
 		await run(
+			"--json",
 			"start",
 			"derived",
 			"--template",
@@ -771,7 +775,6 @@ async function checkTemplate(url: string) {
 			new URL("/chosen", url).href,
 			"--config-json",
 			JSON.stringify({ url: new URL("/configured", url).href }),
-			"--json",
 		),
 	).data;
 	assert.equal(derived.templateVersion, saved.version);
@@ -798,6 +801,7 @@ function loginConfig(expected = "yes") {
 
 async function checkVerifiedTemplate(url: string) {
 	const failed = await command([
+		"--json",
 		"template",
 		"login",
 		"verified",
@@ -805,10 +809,9 @@ async function checkVerifiedTemplate(url: string) {
 		loginConfig(),
 		"--url",
 		url,
-		"--json",
 	]);
 	assert.equal(JSON.parse(failed.out).error.code, "LOGIN_CHECK_NOT_FOUND");
-	const missing = await command(["template", "status", "verified", "--json"]);
+	const missing = await command(["--json", "template", "status", "verified"]);
 	assert.equal(JSON.parse(missing.out).error.code, "TEMPLATE_NOT_FOUND");
 	await writeFile(
 		join(scratch, "login-check.ts"),
@@ -819,6 +822,7 @@ async function checkVerifiedTemplate(url: string) {
 	);
 	const task = JSON.parse(
 		await run(
+			"--json",
 			"template",
 			"login",
 			"verified",
@@ -826,24 +830,23 @@ async function checkVerifiedTemplate(url: string) {
 			loginConfig(),
 			"--url",
 			url,
-			"--json",
 		),
 	).data;
 	sessions.add(task.loginSession);
 	assert.equal(task.state, "needs_user_auth");
 	const save = [
+		"--json",
 		"template",
 		"save",
 		"verified",
 		"--from-session",
 		task.loginSession,
-		"--json",
 	];
 	const pending = await command(save);
 	assert.equal(JSON.parse(pending.out).error.code, "NEEDS_LOGIN");
 	await clickCheck(task.loginSession);
 	assert.equal(
-		JSON.parse(await run("template", "status", "verified", "--json")).data
+		JSON.parse(await run("--json", "template", "status", "verified")).data
 			.state,
 		"ready",
 	);
@@ -880,7 +883,7 @@ async function checkImportedTemplate(url: string) {
 		);
 	}
 	const { data: saved } = JSON.parse(
-		await run("template", "status", "saved", "--json"),
+		await run("--json", "template", "status", "saved"),
 	);
 	const seed = profilePath("saved", saved.version);
 	const directory = "chrome profile copy";
@@ -912,12 +915,12 @@ async function checkImportedTemplate(url: string) {
 		],
 		[[...save, "--from-session", "qa"], "INVALID_OPTIONS"],
 	] as const) {
-		const result = await command([...args, "--json"]);
+		const result = await command(["--json", ...args]);
 		assert.equal(JSON.parse(result.out).error.code, expected, result.out);
 	}
 	const withUrl = [...save, "--url", url];
 	const { data: imported } = JSON.parse(
-		await run(...withUrl, "--config-json", loginConfig(), "--json"),
+		await run("--json", ...withUrl, "--config-json", loginConfig()),
 	);
 	assert.equal(imported.state, "ready");
 	assert.equal(imported.url, url);
@@ -944,20 +947,20 @@ async function checkImportedTemplate(url: string) {
 	await run("stop", session);
 
 	const rejected = await command([
+		"--json",
 		...withUrl,
 		"--replace",
 		"--config-json",
 		loginConfig("missing"),
-		"--json",
 	]);
 	assert.equal(JSON.parse(rejected.out).error.code, "NEEDS_LOGIN");
 	const { data: current } = JSON.parse(
-		await run("template", "status", "imported", "--json"),
+		await run("--json", "template", "status", "imported"),
 	);
 	assert.equal(current.version, imported.version);
 
 	const { data: noUrl } = JSON.parse(
-		await run("template", "save", "no-url", "--from", directory, "--json"),
+		await run("--json", "template", "save", "no-url", "--from", directory),
 	);
 	assert.equal(noUrl.state, "unchecked");
 	assert.equal(noUrl.url, undefined);
@@ -1024,10 +1027,25 @@ async function checkPlugin(url: string) {
 			}],
 		};`,
 	);
+	await writeFile(
+		join(scratch, "report-plugin.ts"),
+		`import { defineCommand } from ${JSON.stringify(join(repo, "packages/plugin-sdk/src/index.ts"))};
+		import { z } from ${JSON.stringify(Bun.resolveSync("incur", repo))};
+		export default {
+			name: "report", version: "0.1.0", apiVersion: 1,
+			commands: [defineCommand({
+				name: "export", summary: "Select a report format",
+				usage: "boathook --session NAME plugin report export --format xml|json",
+				flags: z.object({ format: z.enum(["xml", "json"]) }),
+				run: ({ input }) => ({ format: input.options.format }),
+			})],
+		};`,
+	);
 	const settings = {
 		url,
 		plugins: [
 			{ id: "observer", entry: "./observer-plugin.ts" },
+			{ id: "report", entry: "./report-plugin.ts" },
 			{
 				id: "fixture",
 				entry: "./fixture-plugin.ts",
@@ -1052,25 +1070,51 @@ async function checkPlugin(url: string) {
 		],
 	});
 	const beforeRestart = JSON.parse(
-		await run("status", "with-plugin", "--json"),
+		await run("--json", "status", "with-plugin"),
 	).data;
 	const rejected = await command([
+		"--json",
 		"restart",
 		"with-plugin",
 		"--config-json",
 		invalid,
-		"--json",
 	]);
 	assert.notEqual(rejected.code, 0);
 	assert.match(rejected.out, /candidate rejected/);
 	const afterRestart = JSON.parse(
-		await run("status", "with-plugin", "--json"),
+		await run("--json", "status", "with-plugin"),
 	).data;
 	assert.equal(afterRestart.pid, beforeRestart.pid);
 	assert.equal(afterRestart.state, "running");
 	const scoped = ["--session", "with-plugin"];
+	const exportReport = ["plugin", "report", "export", "--format"];
+	assert.deepEqual(
+		JSON.parse(
+			await run(...scoped, "--format", "json", ...exportReport, "xml"),
+		),
+		{
+			ok: true,
+			command: "plugin report export",
+			session: "with-plugin",
+			data: { format: "xml" },
+		},
+	);
+	const invalidTimeout = await command([
+		...scoped,
+		"--timeout",
+		"bad",
+		...exportReport,
+		"json",
+	]);
+	assert.equal(invalidTimeout.code, 2);
+	assert.equal(invalidTimeout.out, "");
+	assert.match(invalidTimeout.err, /^INVALID_ARGUMENTS:/);
+	assert.deepEqual(JSON.parse(await run(...scoped, ...exportReport, "json")), {
+		format: "json",
+	});
+	console.log("PASS: host and plugin output formats are parsed independently");
 	const discovered = JSON.parse(
-		await run(...scoped, "--llms-full", "--json"),
+		await run("--json", ...scoped, "--llms-full"),
 	).data;
 	assert(
 		discovered.commands.some(
@@ -1078,6 +1122,7 @@ async function checkPlugin(url: string) {
 		),
 	);
 	const stale = await command([
+		"--json",
 		...scoped,
 		"--snapshot-id",
 		"stale",
@@ -1085,14 +1130,13 @@ async function checkPlugin(url: string) {
 		"fixture",
 		"show",
 		"page",
-		"--json",
 	]);
 	assert.equal(stale.code, 2, stale.out);
 	assert.equal(JSON.parse(stale.out).command, "plugin fixture show page");
 	assert.equal(JSON.parse(stale.out).error.code, "STALE_REF");
 	async function scope(session: string) {
 		return JSON.parse(
-			await run("--session", session, "plugin", "fixture", "scope", "--json"),
+			await run("--json", "--session", session, "plugin", "fixture", "scope"),
 		).data;
 	}
 	assert.equal(
@@ -1125,23 +1169,23 @@ async function checkPlugin(url: string) {
 	});
 	assert.deepEqual(await scope("with-plugin"), observed);
 	const enabled = JSON.parse(
-		await run(...scoped, "plugin", "ls", "--json"),
+		await run("--json", ...scoped, "plugin", "ls"),
 	).data;
 	assert.deepEqual(
 		enabled.map(({ id }: { id: string }) => id),
-		["observer", "fixture"],
+		["observer", "report", "fixture"],
 	);
 	const isolated = JSON.parse(
-		await run("--session", "qb", "plugin", "ls", "--json"),
+		await run("--json", "--session", "qb", "plugin", "ls"),
 	).data;
 	assert.deepEqual(isolated, []);
 	const oldTabs = JSON.parse(
-		await run(...scoped, "tab", "list", "--json"),
+		await run("--json", ...scoped, "tab", "list"),
 	).data;
 	const nextUrl = new URL("/updated-entry", url).href;
 	const nextConfig = JSON.stringify({ ...settings, url: nextUrl });
 	const restarted = JSON.parse(
-		await run("restart", "with-plugin", "--config-json", nextConfig, "--json"),
+		await run("--json", "restart", "with-plugin", "--config-json", nextConfig),
 	).data;
 	assert.equal(restarted.activeUrl, nextUrl);
 	assert.equal(await Bun.file(cleanupReceipt).text(), "2");
@@ -1154,7 +1198,7 @@ async function checkPlugin(url: string) {
 		await run(...scoped, "eval", "document.body.dataset.entry"),
 		nextUrl,
 	);
-	const tabs = JSON.parse(await run(...scoped, "tab", "list", "--json")).data;
+	const tabs = JSON.parse(await run("--json", ...scoped, "tab", "list")).data;
 	assert.equal(tabs[0].url, url);
 	assert.equal(tabs[1].url, nextUrl);
 	assert.equal(tabs[1].active, true);
@@ -1200,17 +1244,17 @@ async function checkRollback(url: string) {
 	const scoped = ["--session", name];
 	const plugin = [...scoped, "plugin", "rollback-fixture"];
 	const inspect = async () =>
-		JSON.parse(await run(...scoped, "config", "inspect", "--json")).data;
+		JSON.parse(await run("--json", ...scoped, "config", "inspect")).data;
 	const original = await inspect();
 	const value = async () =>
-		JSON.parse(await run(...plugin, "value", "--json")).data;
+		JSON.parse(await run("--json", ...plugin, "value")).data;
 	assert.equal(await value(), "old");
 	await run(...plugin, "set", "saved");
 	assert.equal(await value(), "saved");
 	const saved = await inspect();
 	assert.notEqual(saved.revision, original.revision);
 	const persisted = await Bun.file(saved.path).text();
-	const failed = await command([...plugin, "set", "reject", "--json"]);
+	const failed = await command(["--json", ...plugin, "set", "reject"]);
 	assert.notEqual(failed.code, 0);
 	assert.match(failed.out, /test update rejection/);
 	assert.equal(await value(), "saved");
@@ -1221,9 +1265,10 @@ async function checkRollback(url: string) {
 	await run(...scoped, "tab", "new", new URL("/saved-tab", url).href);
 	await run(...scoped, "eval", 'localStorage.setItem("restart-test", "kept")');
 	const tabs = async () =>
-		JSON.parse(await run(...scoped, "tab", "list", "--json")).data;
+		JSON.parse(await run("--json", ...scoped, "tab", "list")).data;
 	const savedTabs = await tabs();
 	const badRestart = await command([
+		"--json",
 		"restart",
 		name,
 		"--config-json",
@@ -1233,7 +1278,6 @@ async function checkRollback(url: string) {
 				{ id: "rollback-fixture", entry, options: { value: "fail-init" } },
 			],
 		}),
-		"--json",
 	]);
 	assert.equal(badRestart.code, 1, badRestart.out);
 	const { error } = JSON.parse(badRestart.out);
@@ -1253,21 +1297,21 @@ async function checkRollback(url: string) {
 		"page-eval",
 		"await Promise.all(page.context().pages().map(tab => tab.close())); return true;",
 	);
-	const missingTab = await command([...scoped, "title", "--json"]);
+	const missingTab = await command(["--json", ...scoped, "title"]);
 	assert.equal(JSON.parse(missingTab.out).error.code, "TAB_GONE");
 	const enabled = JSON.parse(
-		await run(...scoped, "plugin", "ls", "--json"),
+		await run("--json", ...scoped, "plugin", "ls"),
 	).data;
 	assert.equal(enabled[0].id, "rollback-fixture");
 	await run(...plugin, "set", "changed-without-page");
 	const inspected = JSON.parse(
 		await run(
+			"--json",
 			...scoped,
 			"config",
 			"inspect",
 			"--plugin",
 			"rollback-fixture",
-			"--json",
 		),
 	).data;
 	assert.deepEqual(inspected.plugin.options, { value: "changed-without-page" });
@@ -1278,7 +1322,7 @@ async function checkRollback(url: string) {
 
 async function checkInstalledPlugin(url: string) {
 	for (const source of ["demo@bad^range", "demo@npm:other@1.0.0"]) {
-		const invalid = await command(["plugin", "install", source, "--json"]);
+		const invalid = await command(["--json", "plugin", "install", source]);
 		assert.equal(JSON.parse(invalid.out).error.code, "INVALID_PLUGIN_SOURCE");
 	}
 	const importTrace = join(scratch, "installed-plugin-imports.txt");
@@ -1311,7 +1355,7 @@ async function checkInstalledPlugin(url: string) {
 		};`,
 	);
 	const installed = JSON.parse(
-		await run("plugin", "install", directory, "--json"),
+		await run("--json", "plugin", "install", directory),
 	).data;
 	assert.equal(installed.id, "installed-fixture");
 	assert.equal(installed.version, "0.1.0");
@@ -1327,11 +1371,11 @@ async function checkInstalledPlugin(url: string) {
 	const records = await Bun.file(index).json();
 	await writeFile(index, JSON.stringify([...records, missingEntry]));
 	const beforeDiscovery = await Bun.file(importTrace).text();
-	const listed = JSON.parse(await run("plugin", "ls", "--json")).data;
+	const listed = JSON.parse(await run("--json", "plugin", "ls")).data;
 	assert(listed.some(({ id }: { id: string }) => id === "installed-fixture"));
 	assert(listed.some(({ id }: { id: string }) => id === missingEntry.id));
 	const help = JSON.parse(
-		await run("plugin", installed.id, "help", "title", "--json"),
+		await run("--json", "plugin", installed.id, "help", "title"),
 	).data;
 	assert.deepEqual(
 		help.commands.map(({ path }: { path: string[] }) => path),
@@ -1354,12 +1398,12 @@ async function checkInstalledPlugin(url: string) {
 	);
 	await run("restart", "global-plugin", "--config-json", "{}");
 	const updated = JSON.parse(
-		await run(...scoped, "plugin", "ls", "--json"),
+		await run("--json", ...scoped, "plugin", "ls"),
 	).data;
 	assert.deepEqual(updated, []);
 	await rename(installed.entry, `${installed.entry}.moved`);
 	assert.deepEqual(
-		JSON.parse(await run("plugin", installed.id, "help", "title", "--json"))
+		JSON.parse(await run("--json", "plugin", installed.id, "help", "title"))
 			.data,
 		help,
 	);
@@ -1404,7 +1448,7 @@ try {
 	throw error;
 } finally {
 	const stopped = await Promise.all(
-		[...sessions].map((name) => command(["stop", name, "--json"])),
+		[...sessions].map((name) => command(["--json", "stop", name])),
 	);
 	fixture.stop(true);
 	if (

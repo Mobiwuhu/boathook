@@ -65,7 +65,7 @@ else
   if grep -F 'not found' "$stage/libs.txt" >&2; then fail 'Chrome 缺少上述系统库，请安装后重新运行。'; fi
   rm -- "$stage/libs.txt"
   cp -R -- bin licenses scripts install.sh core-checksums.txt manifest.json "$stage/"
-  env -u BOATHOOK_CHROME_EXECUTABLE -u BOATHOOK_BUN_EXECUTABLE "$stage/bin/boathook" doctor --json
+  env -u BOATHOOK_CHROME_EXECUTABLE -u BOATHOOK_BUN_EXECUTABLE "$stage/bin/boathook" --json doctor
   mv -T -- "$stage" "$release"
   trap - EXIT
 fi
@@ -77,7 +77,7 @@ BOATHOOK_STATE_DIR="$store" ./bin/bun -e '
     if (!/^plugins\/[a-zA-Z0-9_.%+-]+\.tgz$/.test(file)) {
       throw new Error("发行包包含无效的插件文件名。");
     }
-    const existing = Bun.spawnSync([binary, "plugin", "ls", "--json"], { env });
+    const existing = Bun.spawnSync([binary, "--json", "plugin", "ls"], { env });
     if (existing.exitCode === 0 && JSON.parse(existing.stdout.toString()).data.some(
       (plugin) => plugin.id === id && plugin.version === version
     )) continue;

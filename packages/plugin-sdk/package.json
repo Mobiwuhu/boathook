@@ -2,12 +2,14 @@
 	"name": "@boathook/plugin-sdk",
 	"version": "0.1.0",
 	"type": "module",
+	"license": "MIT",
 	"exports": {
 		".": "./src/index.ts",
 		"./utilities": "./src/utilities.ts"
 	},
 	"files": [
-		"src"
+		"src",
+		"README.zh-CN.md"
 	],
 	"dependencies": {
 		"chrome-types": "catalog:",

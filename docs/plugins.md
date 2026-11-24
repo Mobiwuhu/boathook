@@ -32,12 +32,19 @@ A session can load a local plugin by entry. Relative entries resolve from the wo
 boathook start qa --url https://example.com \
   --config-json '{"plugins":[{"id":"page-info","entry":"./page-info.ts"}]}'
 boathook --session qa plugin page-info help
-boathook --session qa plugin page-info title --json
+boathook --json --session qa plugin page-info title
 ```
 
-Install a plugin with `boathook plugin install SPEC`. The install catalog provides offline command help. Session help describes the loaded plugins. `boathook --session qa --llms-full --json` includes their commands in the same catalog as the built-ins. To change the set of loaded plugins, pass new startup JSON to `boathook restart NAME --config-json JSON`.
+Install a plugin with `boathook plugin install SPEC`. The install catalog provides offline command help. Session help describes the loaded plugins. `boathook --json --session qa --llms-full` includes their commands in the same catalog as the built-ins. To change the set of loaded plugins, pass new startup JSON to `boathook restart NAME --config-json JSON`.
 
 ## Commands, hooks, and capabilities
+
+Put host options before `plugin` and plugin options after the full command path. For a `report export` plugin command that declares `--format`, this invocation selects a JSON receipt and passes `xml` to the command.
+
+```bash
+boathook --session qa --format json \
+  plugin report export --format xml
+```
 
 `defineCommand()` uses one argument schema for parsing and command help. A browser command can use `page`, `context`, `input`, and per-session `sessionState`. A configuration command supplies `configure` to compute the next options and a result. The host validates the options, calls the plugin lifecycle hook, and saves the session record.
 

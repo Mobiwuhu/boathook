@@ -35,7 +35,7 @@ Flags:
   --locales <list>    Comma-separated locale codes
   --url <url>         URL to test
   --pattern <regex>   Regex pattern for untranslated keys (default: uppercase SNAKE_CASE)
-  --json              Output as JSON`,
+  --json              Global JSON output option`,
 		};
 	}
 

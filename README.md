@@ -13,7 +13,7 @@ To install from a source checkout, use the Bun version in `.bun-version` and run
 ```bash
 bun install --frozen-lockfile
 bun run build
-./dist/boathook doctor --json
+./dist/boathook --json doctor
 ```
 
 The commands below assume `boathook` is on PATH. Start a session, inspect the interactive elements, and use the element references in the snapshot to click or fill fields.
@@ -28,7 +28,7 @@ boathook start qa
 
 New sessions stay open for up to 24 hours of inactivity. Idle shutdown and `stop` save the profile and tab URLs. Start the same name to restore them. The default state directory is `~/.boathook`. Set `BOATHOOK_STATE_DIR` for isolated runs and `BOATHOOK_CHROME_EXECUTABLE` to select a Chrome binary for new sessions. [Session lifecycle](docs/sessions-and-tabs.md)
 
-Run `boathook --help` for available commands and `boathook help snapshot` for a page command's arguments. Agents can inspect the catalog with `boathook --llms-full --json`. Pass `--json` to receive a structured command result. [Command guide](docs/commands.md)
+Run `boathook --help` for available commands and `boathook help snapshot` for a page command's arguments. Agents can inspect the catalog with `boathook --json --llms-full`. Put global options such as `--json` before the command to receive a structured result. [Command guide](docs/commands.md)
 
 ## Upgrade an installation
 
@@ -39,15 +39,15 @@ boathook upgrade
 
 On Linux x86-64, the installed release records its GitHub repository. The command checks the latest stable release, verifies the downloaded archive, and switches the command to the new release after the installer checks Chrome. Restart a session to use the new release with its saved profile.
 
-Use `boathook upgrade --repo OWNER/REPO` to specify the source repository, or `boathook upgrade --archive ./boathook-linux-x64-0.2.0.tar.gz` to upgrade from a local release. Use `--check --json` to report the installed and available versions without installing.
+Use `boathook upgrade --repo OWNER/REPO` to specify the source repository, or `boathook upgrade --archive ./boathook-linux-x64-0.2.0.tar.gz` to upgrade from a local release. Run `boathook --json upgrade --check` to report the installed and available versions without installing.
 
 ## Templates and scripts
 
-Create a login session with `boathook template login work --url URL --json`, finish the sign-in flow in the returned `loginSession`, then use `boathook template save work --from-session LOGIN_SESSION`. An exported Chrome user data directory can also be imported with `boathook template save work --from ./chrome-user-data`. Pass `--url` when the imported template should open a particular page.
+Create a login session with `boathook --json template login work --url URL`, finish the sign-in flow in the returned `loginSession`, then use `boathook template save work --from-session LOGIN_SESSION`. An exported Chrome user data directory can also be imported with `boathook template save work --from ./chrome-user-data`. Pass `--url` when the imported template should open a particular page.
 
 ```bash
 boathook start regression --template work
-boathook --session regression run ./check.ts --input-json '{"case":"smoke"}' --json
+boathook --json --session regression run ./check.ts --input-json '{"case":"smoke"}'
 ```
 
 The script exports a default function that receives `{ page, context, input, args }`. It can use Playwright APIs and import project dependencies. [Browser login](docs/authentication.md)
@@ -61,7 +61,7 @@ The example uses the `headers` plugin included in releases built with `--with-pl
 ~~~bash
 boathook start qa-headers --config-json '{"plugins":[{"id":"headers"}]}'
 boathook --session qa-headers plugin headers set x-debug-mode preview
-boathook --session qa-headers config inspect --json
+boathook --json --session qa-headers config inspect
 ~~~
 
 ## Verify a checkout

@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import {
+	checkNpmArchive,
+	npmArchiveName,
+	npmPackages,
+} from "../release-packages.ts";
 
 const archives = process.argv.slice(2);
 assert(archives.length > 0, "Usage: bun run test:release RELEASE.tar.gz [...]");
@@ -13,6 +18,7 @@ delete env.BOATHOOK_SESSION;
 env.BOATHOOK_STATE_DIR = join(storage, "state");
 env.BOATHOOK_BIN_DIR = join(storage, "bin");
 const binary = join(env.BOATHOOK_BIN_DIR, "boathook");
+const npmDirectory = process.env.BOATHOOK_SMOKE_NPM_DIR;
 
 async function run(args: string[], cwd = storage): Promise<string> {
 	const child = Bun.spawn(args, {
@@ -24,6 +30,56 @@ async function run(args: string[], cwd = storage): Promise<string> {
 	const output = await new Response(child.stdout).text();
 	assert.equal(await child.exited, 0, `${args.join(" ")}\n${output}`);
 	return output;
+}
+
+async function checkNpmPackages(
+	directory: string,
+	version: string,
+): Promise<void> {
+	for (const id of npmPackages) {
+		const file = join(directory, npmArchiveName(id, version));
+		checkNpmArchive(file, id, version);
+		const entries = (await run(["tar", "-tzf", file])).trim().split("\n");
+		assert(entries.includes("package/README.md"), id);
+		assert(entries.includes("package/README.zh-CN.md"), id);
+	}
+	const headers = join(directory, npmArchiveName("headers", version));
+	assert.match(
+		await run([
+			"tar",
+			"-xOzf",
+			headers,
+			"package/dist/licenses/THIRD-PARTY.md",
+		]),
+		/^# Third-party notices/,
+	);
+	const { data: installed } = JSON.parse(
+		await run([binary, "--json", "plugin", "install", headers]),
+	);
+	assert.equal(installed.id, "headers");
+	assert.equal(installed.version, version);
+
+	const project = join(storage, "sdk-project");
+	await mkdir(project);
+	await Bun.write(join(project, "package.json"), '{"private":true}');
+	await run(
+		[
+			process.execPath,
+			"add",
+			"--ignore-scripts",
+			join(directory, npmArchiveName("plugin-sdk", version)),
+		],
+		project,
+	);
+	await run(
+		[
+			process.execPath,
+			"-e",
+			'import { defineCommand } from "@boathook/plugin-sdk"; if (typeof defineCommand !== "function") process.exit(1)',
+		],
+		project,
+	);
+	console.log(`PASS: standalone headers and plugin SDK packages at ${version}`);
 }
 
 try {
@@ -38,9 +94,10 @@ try {
 		await mkdir(directory);
 		await run(["tar", "-xzf", resolve(archive), "-C", directory]);
 		const release = join(directory, "boathook-linux-x64");
-		const { plugins } = (await Bun.file(
+		const { version, plugins } = (await Bun.file(
 			join(release, "manifest.json"),
 		).json()) as {
+			version: string;
 			plugins: Array<{ id: string; version: string; file: string }>;
 		};
 		const notices = await Bun.file(
@@ -58,9 +115,12 @@ try {
 		}
 		await run(["bash", "install.sh", "--dry-run"], release);
 		await run(["bash", "install.sh"], release);
-		assert.equal(JSON.parse(await run([binary, "doctor", "--json"])).ok, true);
+		assert(
+			(await run([binary, "--version"])).startsWith(`boathook ${version} (`),
+		);
+		assert.equal(JSON.parse(await run([binary, "--json", "doctor"])).ok, true);
 		const installed = JSON.parse(
-			await run([binary, "plugin", "ls", "--json"]),
+			await run([binary, "--json", "plugin", "ls"]),
 		).data;
 		for (const { id, version, file } of plugins) {
 			const notice = await run([
@@ -78,17 +138,25 @@ try {
 				id,
 			);
 		}
-		const config = JSON.stringify({
-			plugins: plugins.map(({ id }) => ({ id })),
-		});
+		const selected = plugins.map(({ id }) => ({ id }));
+		if (npmDirectory && index === 0) {
+			assert.equal(
+				installed.length,
+				0,
+				"The public CLI installs with zero plugins.",
+			);
+			await checkNpmPackages(resolve(npmDirectory), version);
+			selected.push({ id: "headers" });
+		}
+		const config = JSON.stringify({ plugins: selected });
 		await run([binary, "start", "qa", "--config-json", config]);
 		try {
 			const active = JSON.parse(
-				await run([binary, "--session", "qa", "plugin", "ls", "--json"]),
+				await run([binary, "--json", "--session", "qa", "plugin", "ls"]),
 			).data;
 			assert.deepEqual(
 				active.map(({ id }: { id: string }) => id),
-				plugins.map(({ id }) => id),
+				selected.map(({ id }) => id),
 			);
 			await run([binary, "--session", "qa", "snapshot", "-i"]);
 		} finally {
@@ -98,7 +166,7 @@ try {
 			"PASS: installed " +
 				archive +
 				" and loaded " +
-				plugins.length +
+				selected.length +
 				" plugins",
 		);
 	}

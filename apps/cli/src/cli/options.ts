@@ -17,6 +17,19 @@ export const globalOptions = z.object({
 	format: z.enum(["json", "text"]).optional().describe("输出格式"),
 });
 
+export function longFlag(name: string): string {
+	return `--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+}
+
+export const globalOptionSpecs = Object.entries(globalOptions.shape).map(
+	([name, schema]) => ({
+		name,
+		flag: longFlag(name),
+		takesValue: schema.unwrap().type !== "boolean",
+	}),
+);
+export const globalFlags = globalOptionSpecs.map(({ flag }) => flag);
+
 export function selectSession(positional?: string, explicit?: string): string {
 	if (positional && explicit && positional !== explicit) {
 		throw new CommandError(

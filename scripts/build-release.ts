@@ -1,7 +1,6 @@
 import { chmod, copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { importProductPlugin } from "@boathook/core";
-import pkg from "../apps/cli/package.json";
 import {
 	githubRepository,
 	releaseArchiveName,
@@ -9,9 +8,15 @@ import {
 	releasePlatform,
 } from "../apps/cli/src/release.ts";
 import { writeBundleLicenses } from "./release-licenses.ts";
+import {
+	npmArchiveName,
+	npmPackages,
+	readReleaseVersion,
+} from "./release-packages.ts";
 
 const repo = join(import.meta.dir, "..");
 const output = join(repo, "dist");
+const version = await readReleaseVersion(repo);
 const repository =
 	process.env.BOATHOOK_RELEASE_REPO ?? process.env.GITHUB_REPOSITORY;
 if (repository && !githubRepository.test(repository)) {
@@ -39,6 +44,32 @@ async function checksum(directory: string, file: string): Promise<string> {
 	return `${digest}  ${file}`;
 }
 
+async function buildPlugin(
+	source: string,
+	packageName: string,
+	scratch: string,
+) {
+	const metafile = join(scratch, "plugin-build.json");
+	await run(
+		[process.execPath, "run", "build", `--metafile=${metafile}`],
+		source,
+	);
+	const entry = Bun.resolveSync(packageName, source);
+	const plugin = await importProductPlugin(entry);
+	const licenses = join(dirname(entry), "licenses");
+	await rm(licenses, { recursive: true, force: true });
+	await writeBundleLicenses(licenses, { cwd: source, metafile });
+	await copyFile(join(repo, "LICENSE"), join(licenses, "MIT.txt"));
+	return plugin;
+}
+
+async function pack(source: string, file: string): Promise<void> {
+	await run(
+		[process.execPath, "pm", "pack", "--ignore-scripts", "--filename", file],
+		source,
+	);
+}
+
 async function packagePlugins(
 	directory: string,
 	scratch: string,
@@ -53,33 +84,31 @@ async function packagePlugins(
 		).json();
 		if (!keywords?.includes("boathook-plugin")) continue;
 		const source = join(repo, dirname(manifest));
-		const metafile = join(scratch, "plugin-build.json");
-		await run(
-			[process.execPath, "run", "build", `--metafile=${metafile}`],
+		const { name: id, version } = await buildPlugin(
 			source,
+			packageName,
+			scratch,
 		);
-		const entry = Bun.resolveSync(packageName, source);
-		const { name: id, version } = await importProductPlugin(entry);
 		const file = `plugins/${id}-${encodeURIComponent(version)}.tgz`;
-		const licenses = join(dirname(entry), "licenses");
-		await rm(licenses, { recursive: true, force: true });
-		await writeBundleLicenses(licenses, { cwd: source, metafile });
-		await copyFile(join(repo, "LICENSE"), join(licenses, "MIT.txt"));
 		await mkdir(join(directory, "plugins"), { recursive: true });
-		await run(
-			[
-				process.execPath,
-				"pm",
-				"pack",
-				"--ignore-scripts",
-				"--filename",
-				join(directory, file),
-			],
-			source,
-		);
+		await pack(source, join(directory, file));
 		plugins.push({ id, version, file });
 	}
 	return plugins;
+}
+
+async function packageNpmReleases(scratch: string): Promise<void> {
+	const directory = join(output, "npm");
+	await mkdir(directory, { recursive: true });
+	for (const id of npmPackages) {
+		const source = join(repo, "packages", id);
+		if (id === "headers") {
+			const plugin = await buildPlugin(source, "@boathook/headers", scratch);
+			if (plugin.name !== id || plugin.version !== version)
+				throw new Error(`The headers plugin must report version ${version}.`);
+		}
+		await pack(source, join(directory, npmArchiveName(id, version)));
+	}
 }
 
 async function writeArchive(
@@ -97,7 +126,7 @@ async function writeArchive(
 		join(directory, "manifest.json"),
 		JSON.stringify(
 			{
-				version: pkg.version,
+				version,
 				platform: releasePlatform,
 				repository,
 				bun: Bun.version,
@@ -116,10 +145,7 @@ async function writeArchive(
 		join(directory, "checksums.txt"),
 		[...checksums, ""].join("\n"),
 	);
-	const archive = join(
-		output,
-		releaseArchiveName(pkg.version, plugins.length > 0),
-	);
+	const archive = join(output, releaseArchiveName(version, plugins.length > 0));
 	await run(["tar", "-czf", archive, "-C", scratch, releaseDirectoryName]);
 	console.log(archive);
 }
@@ -131,8 +157,10 @@ const bunVersion = (await Bun.file(join(repo, ".bun-version")).text()).trim();
 if (Bun.version !== bunVersion)
 	throw new Error(`请使用 Bun ${bunVersion} 构建发行包。`);
 const flags = process.argv.slice(2);
-if (flags.some((flag) => flag !== "--with-plugins"))
-	throw new Error("用法为 bun run release [--with-plugins]。");
+if (
+	flags.some((flag) => flag !== "--with-plugins" && flag !== "--npm-packages")
+)
+	throw new Error("用法为 bun run release [--with-plugins] [--npm-packages]。");
 
 await mkdir(output, { recursive: true });
 const scratch = await mkdtemp(join(output, ".release-"));
@@ -180,6 +208,7 @@ try {
 		[...checksums, ""].join("\n"),
 	);
 	await writeArchive(scratch, directory, coreFiles, []);
+	if (flags.includes("--npm-packages")) await packageNpmReleases(scratch);
 	if (flags.includes("--with-plugins")) {
 		await writeArchive(
 			scratch,

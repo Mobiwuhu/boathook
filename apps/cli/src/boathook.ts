@@ -5,15 +5,10 @@ import {
 } from "@boathook/core";
 import { CommandError } from "@boathook/plugin-sdk";
 import { readBatchPayload, writeBatch } from "./cli/batch.ts";
-import {
-	commandHelp,
-	describeCommands,
-	globalFlags,
-	helpFor,
-} from "./cli/discovery.ts";
-import { selectSession } from "./cli/options.ts";
+import { commandHelp, describeCommands, helpFor } from "./cli/discovery.ts";
+import { globalFlags, selectSession } from "./cli/options.ts";
 import { parseCommandData, writeError, writeResult } from "./cli/output.ts";
-import { parseArgs } from "./cli/parse.ts";
+import { jsonForInvalidGlobalArgs, parseArgs } from "./cli/parse.ts";
 import { resolveCommandPaths } from "./cli/paths.ts";
 import { runPluginCommand } from "./cli/plugins.ts";
 import { createProgram } from "./cli/program.ts";
@@ -31,12 +26,7 @@ async function run(argv: string[]): Promise<void> {
 	const rawArgs = separator === -1 ? [] : argv.slice(separator + 1);
 	let command = "boathook";
 	let session: string | undefined;
-	let json = prefix.some(
-		(arg, index) =>
-			arg === "--json" ||
-			arg === "--format=json" ||
-			(arg === "--format" && prefix[index + 1] === "json"),
-	);
+	let json: boolean | undefined;
 	try {
 		const parsed = parseArgs(prefix);
 		const { cmd, args, session: selected, tab, snapshotId, timeout } = parsed;
@@ -93,7 +83,7 @@ async function run(argv: string[]): Promise<void> {
 					? matches.map(commandHelp).join("\n\n")
 					: [
 							"boathook [global options] <command>",
-							`Global options: ${globalFlags.join(" ")}`,
+							`Global options before the command: ${globalFlags.join(" ")}`,
 							...matches.map((item) => `  ${item.name}  ${item.description}`),
 						].join("\n");
 			writeResult(
@@ -112,9 +102,18 @@ async function run(argv: string[]): Promise<void> {
 				!args[0].startsWith("-")
 			)
 				command = `${cmd} ${args[0]}`;
+			// Incur reserves these flags when serving its native commands.
+			const outputFlag = args.find(
+				(arg) => arg === "--json" || arg === "--format",
+			);
+			if (outputFlag)
+				throw new CommandError(
+					"INVALID_ARGUMENTS",
+					`请把 ${outputFlag} 放在命令前面。`,
+				);
 			let output = "";
 			let exitCode = 0;
-			await program.serve([cmd, ...args, "--format", "json"], {
+			await program.serve(["--format", "json", cmd, ...args], {
 				stdout: (chunk) => {
 					output += chunk;
 				},
@@ -181,7 +180,12 @@ async function run(argv: string[]): Promise<void> {
 				text: response.data,
 			});
 	} catch (error) {
-		writeError(command, error, json, session);
+		writeError(
+			command,
+			error,
+			json ?? jsonForInvalidGlobalArgs(prefix),
+			session,
+		);
 	}
 }
 

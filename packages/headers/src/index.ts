@@ -8,6 +8,7 @@ import {
 } from "@boathook/plugin-sdk";
 import { compileSafePattern, RingBuffer } from "@boathook/plugin-sdk/utilities";
 import { z } from "incur";
+import { version } from "../package.json";
 import { compileHeaderRules } from "./rules.ts";
 
 const scopeSchema = z.strictObject({
@@ -355,7 +356,7 @@ const scopeCommands = ["add", "remove"].map((action) =>
 
 const plugin: BoathookPlugin = {
 	name: "headers",
-	version: "0.1.0",
+	version,
 	apiVersion: 1,
 	optionsSchema,
 	validateRuntime(raw) {

@@ -1,59 +1,175 @@
-name: Build boathook release
+name: Release boathook
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      release_type:
+        description: Version increment
+        required: true
+        type: choice
+        default: initial
+        options:
+          - initial
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: Validate and upload artifacts for review
+        type: boolean
+        default: true
       with_plugins:
-        description: Include the optional headers plugin
+        description: Also build the archive with the optional headers plugin
         type: boolean
         default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: Build and verify a release
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
+      - name: Require main for publishing
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run && github.ref != 'refs/heads/main' }}
+        run: |
+          echo 'Run the publish workflow from main.' >&2
+          exit 1
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+      - name: Prepare the shared version
+        id: version
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type || 'initial' }}
+        run: bun scripts/prepare-release.ts "$RELEASE_TYPE"
       - name: Check release tag
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push'
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version=$(bun -e 'import pkg from "./apps/cli/package.json"; console.log("v" + pkg.version)')
-          if [[ "$GITHUB_REF_NAME" != "$version" ]]; then
-            printf 'Tag must match the CLI package version (%s).\n' "$version" >&2
+          if [[ "$GITHUB_REF_NAME" != "v$RELEASE_VERSION" ]]; then
+            printf 'Tag must match the release version (v%s).\n' "$RELEASE_VERSION" >&2
             exit 1
           fi
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bun run release
-        if: github.event_name == 'push' || inputs.with_plugins == false
-      - run: bun run release --with-plugins
-        if: github.event_name == 'workflow_dispatch' && inputs.with_plugins == true
-      - name: Install and test the release archives
-        run: bun run test:release dist/boathook-linux-x64-*.tar.gz
+      - name: Build release archives
+        env:
+          WITH_PLUGINS: ${{ inputs.with_plugins }}
+        run: |
+          args=(--npm-packages)
+          if [[ "$WITH_PLUGINS" == true ]]; then
+            args+=(--with-plugins)
+          fi
+          bun run release "${args[@]}"
+      - name: Prepare Chrome system libraries
+        run: bun ./node_modules/playwright/cli.js install-deps chromium
+      - name: Install and test the release artifacts
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          BOATHOOK_SMOKE_NPM_DIR: dist/npm
+        run: bun run test:release "dist/boathook-linux-x64-$RELEASE_VERSION"*.tar.gz
+      - name: Save the version changes
+        run: git diff --binary HEAD > dist/release.patch
       - uses: actions/upload-artifact@v4
         with:
-          name: boathook-linux-x64
-          path: dist/boathook-linux-x64-*.tar.gz
+          name: boathook-release
+          if-no-files-found: error
+          overwrite: true
+          compression-level: 0
+          path: |
+            dist/boathook-linux-x64-${{ steps.version.outputs.version }}*.tar.gz
+            dist/npm/*.tgz
+            dist/release.patch
 
   publish:
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    name: Publish to GitHub Releases and npm
+    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
       - uses: actions/download-artifact@v4
         with:
-          name: boathook-linux-x64
+          name: boathook-release
           path: dist
-      - name: Publish GitHub release
+      - name: Check npm configuration and package versions
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -z "$NPM_CONFIG_TOKEN" ]]; then
+            echo 'Set the NPM_TOKEN Actions secret to publish the public packages.' >&2
+            exit 1
+          fi
+          bun scripts/publish-release-packages.ts dist/npm "$RELEASE_VERSION" --check
+      - name: Commit and tag the verified version
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          tag="v$RELEASE_VERSION"
+          git fetch --tags origin main
+          test -f dist/release.patch
+          if [[ -s dist/release.patch ]]; then
+            git apply --index dist/release.patch
+          fi
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            test "$(git rev-parse "$tag^{tree}")" = "$(git write-tree)"
+            git merge-base --is-ancestor "$tag" origin/main
+          else
+            if [[ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]]; then
+              echo 'main advanced during the build. Start a new release from main.' >&2
+              exit 1
+            fi
+            if ! git diff --cached --quiet; then
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git commit -m "chore: release $tag"
+            fi
+            git tag "$tag"
+            git push --atomic origin HEAD:refs/heads/main "refs/tags/$tag"
+          fi
+      - name: Publish the verified npm tarballs
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: bun scripts/publish-release-packages.ts dist/npm "$RELEASE_VERSION"
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes dist/*.tar.gz
+        run: |
+          tag="v$RELEASE_VERSION"
+          archive="boathook-linux-x64-$RELEASE_VERSION.tar.gz"
+          release=$(mktemp)
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets > "$release"; then
+            if ! jq -e --arg archive "$archive" 'any(.assets[]; .name == $archive and .state == "uploaded")' "$release" > /dev/null; then
+              gh release upload "$tag" "dist/$archive" --repo "$GITHUB_REPOSITORY"
+            fi
+            if jq -e '.isDraft' "$release" > /dev/null; then
+              gh release edit "$tag" --draft=false --repo "$GITHUB_REPOSITORY"
+            fi
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "dist/$archive"
+          fi

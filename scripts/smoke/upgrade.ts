@@ -75,12 +75,12 @@ try {
 		"eval",
 		'localStorage.setItem("upgrade-test", "retained")',
 	]);
-	const pid = JSON.parse(await run([binary, "status", "qa", "--json"])).data
+	const pid = JSON.parse(await run([binary, "--json", "status", "qa"])).data
 		.pid;
 	assert.equal(typeof pid, "number");
 
 	const check = JSON.parse(
-		await run([binary, "upgrade", "--archive", next, "--check", "--json"]),
+		await run([binary, "--json", "upgrade", "--archive", next, "--check"]),
 	);
 	assert.equal(check.data.state, "available");
 	assert.equal(check.data.toVersion, to);
@@ -100,7 +100,7 @@ try {
 		releaseDirectoryName,
 	]);
 	const failed = JSON.parse(
-		await run([binary, "upgrade", "--archive", badArchive, "--json"], {
+		await run([binary, "--json", "upgrade", "--archive", badArchive], {
 			success: false,
 		}),
 	);
@@ -109,18 +109,18 @@ try {
 	console.log("PASS: a damaged release leaves the existing executable active");
 
 	const updated = JSON.parse(
-		await run([binary, "upgrade", "--archive", next, "--json"]),
+		await run([binary, "--json", "upgrade", "--archive", next]),
 	);
 	assert.equal(updated.data.state, "upgraded");
 	assert.equal(updated.data.fromVersion, from);
 	assert.equal(updated.data.toVersion, to);
 	const release = join(state, "releases", to);
 	assert.equal(await readlink(binary), join(release, "bin/boathook"));
-	const doctor = JSON.parse(await run([binary, "doctor", "--json"])).data;
+	const doctor = JSON.parse(await run([binary, "--json", "doctor"])).data;
 	assert.equal(doctor.packageManager, join(release, "bin/bun"));
 	assert.equal(doctor.chrome, join(release, "chrome/chrome"));
 	assert.equal(
-		JSON.parse(await run([binary, "status", "qa", "--json"])).data.pid,
+		JSON.parse(await run([binary, "--json", "status", "qa"])).data.pid,
 		pid,
 	);
 	await run([binary, "restart", "qa"]);
@@ -135,7 +135,7 @@ try {
 		"retained",
 	);
 	assert.equal(
-		JSON.parse(await run([binary, "upgrade", "--archive", next, "--json"])).data
+		JSON.parse(await run([binary, "--json", "upgrade", "--archive", next])).data
 			.state,
 		"current",
 	);

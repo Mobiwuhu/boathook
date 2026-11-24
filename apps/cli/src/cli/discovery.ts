@@ -5,7 +5,7 @@ import {
 } from "@boathook/core";
 import type { Cli } from "incur";
 import { COMMANDS } from "../help.ts";
-import { globalOptions } from "./options.ts";
+import { longFlag } from "./options.ts";
 import type { CommandTarget } from "./parse.ts";
 import { sessionPluginManifests } from "./plugins.ts";
 
@@ -21,11 +21,6 @@ export type CommandDescription = {
 	schema?: { args?: Properties; options?: Properties };
 };
 
-function flag(name: string): string {
-	return `--${name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
-}
-
-export const globalFlags = Object.keys(globalOptions.shape).map(flag);
 const controls: CommandDescription[] = [
 	{
 		name: "batch",
@@ -62,7 +57,7 @@ export async function describeCommands(
 	target?: CommandTarget,
 ): Promise<CommandDescription[]> {
 	let output = "";
-	await program.serve(["--llms-full", "--format", "json"], {
+	await program.serve(["--format", "json", "--llms-full"], {
 		stdout: (chunk) => {
 			output += chunk;
 		},
@@ -126,7 +121,7 @@ export function commandFlags(command: CommandDescription): string[] {
 	return (
 		command.flags ??
 		Object.keys(command.schema?.options?.properties ?? {})
-			.map(flag)
+			.map(longFlag)
 			.filter((word) => /^--[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(word))
 	);
 }
@@ -150,7 +145,8 @@ export function commandHelp(command: CommandDescription): string {
 		command.description,
 		usage,
 		...fields.map(
-			([name, property]) => `  ${flag(name)}  ${property.description ?? ""}`,
+			([name, property]) =>
+				`  ${longFlag(name)}  ${property.description ?? ""}`,
 		),
 	].join("\n");
 }

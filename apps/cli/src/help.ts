@@ -21,12 +21,12 @@ Flags:
 	},
 	snapshot: {
 		summary: "Show page elements with refs",
-		usage: `boathook --session NAME snapshot [-i] [-f] [--json]
+		usage: `boathook [--json] --session NAME snapshot [-i] [-f]
 
 Flags:
   -i       Include structural nodes with names (inclusive mode)
   -f       Include all nodes in tree (full mode)
-  --json   Output as JSON
+  --json (global)  Output as JSON
 
 Default mode shows only interactive elements.`,
 	},
@@ -95,21 +95,21 @@ With --diff, outputs similarity percentage, diff pixel count, and path to the di
 	},
 	console: {
 		summary: "Show console messages",
-		usage: `boathook --session NAME console [--level <level>] [--keep] [--json]
+		usage: `boathook [--json] --session NAME console [--level <level>] [--keep]
 
 Flags:
   --level <level>   Filter by level: log, info, warning, error, debug
   --keep            Peek at messages without draining buffer
-  --json            Output as JSON`,
+  --json (global)  Output as JSON`,
 	},
 	network: {
 		summary: "Show network requests",
-		usage: `boathook --session NAME network [--all] [--keep] [--json]
+		usage: `boathook [--json] --session NAME network [--all] [--keep]
 
 Flags:
   --all    Show all requests (default: status >= 400 only)
   --keep   Peek at requests without draining buffer
-  --json   Output as JSON`,
+  --json (global)  Output as JSON`,
 	},
 	"auth-state": {
 		summary: "Save or load auth state",
@@ -159,7 +159,7 @@ Built-in templates:
 	},
 	assert: {
 		summary: "Assert a condition (PASS/FAIL)",
-		usage: `boathook --session NAME assert <type> <args...> [--json]
+		usage: `boathook [--json] --session NAME assert <type> <args...>
 
 Types:
   visible <selector|@ref>              Element is visible
@@ -173,7 +173,7 @@ Types:
   permission <name> granted|denied [--var k=v ...]
 
 Flags:
-  --json   Output as JSON`,
+  --json (global)  Output as JSON`,
 	},
 	healthcheck: {
 		summary: "Run healthcheck across configured pages",
@@ -197,11 +197,11 @@ Pages are defined in the session configuration.`,
 	},
 	benchmark: {
 		summary: "Measure command latency",
-		usage: `boathook --session NAME benchmark [--iterations N] [--json]
+		usage: `boathook [--json] --session NAME benchmark [--iterations N]
 
 Flags:
   --iterations N   Number of iterations (default: 10)
-  --json           Emit structured benchmark output for automation`,
+  --json (global)  Emit structured benchmark output for automation`,
 	},
 	viewport: {
 		summary: "Get or set browser viewport size",
@@ -248,7 +248,7 @@ boathook --session NAME wait hidden <selector|@ref>     Wait until element disap
 boathook --session NAME wait network-idle           Wait until no pending network requests
 boathook --session NAME wait <ms>                   Wait for a fixed delay (last resort)
 
-Respects --timeout flag. Polls at 100ms intervals.`,
+Set --timeout before the command to change the deadline. Polls at 100ms intervals.`,
 	},
 	url: {
 		summary: "Print the current page URL",
@@ -295,7 +295,7 @@ Examples:
 
 Flags:
   --standard <std>   WCAG standard: wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa, best-practice
-  --json             Output results as JSON (for CI)
+  --json (global)  Output results as JSON (for CI)
   --include <sel>    Scope audit to a CSS selector
   --exclude <sel>    Exclude a CSS selector from audit
 
@@ -308,7 +308,7 @@ Examples:
   boathook a11y                        Full page audit
   boathook a11y --standard wcag2aa     WCAG 2.0 AA only
   boathook a11y --standard wcag21aa    WCAG 2.1 AA
-  boathook a11y --json                 Machine-readable output`,
+  boathook --json --session NAME a11y                 Machine-readable output`,
 	},
 	dialog: {
 		summary: "Handle browser dialogs (alert, confirm, prompt)",
@@ -321,12 +321,12 @@ boathook --session NAME dialog auto-off           Disable auto-mode (queue dialo
 	},
 	download: {
 		summary: "Wait for and save file downloads with optional verification",
-		usage: `boathook --session NAME download wait [--save-to <path>] [--timeout <ms>]
+		usage: `boathook --session NAME [--timeout <ms>] download wait [--save-to <path>]
   [--expect-type <mime>] [--expect-min-size <bytes>] [--expect-max-size <bytes>]
 
 Flags:
   --save-to <path>           Save downloaded file to this path
-  --timeout <ms>             Timeout for waiting (default: 30000)
+  --timeout <ms>             Global wait timeout (default: 30000)
   --expect-type <mime>       Validate file MIME type (e.g. application/pdf)
   --expect-min-size <bytes>  Minimum file size in bytes
   --expect-max-size <bytes>  Maximum file size in bytes
@@ -359,19 +359,19 @@ Examples:
 	},
 	cookies: {
 		summary: "Inspect browser cookies",
-		usage: `boathook --session NAME cookies [--domain <domain>] [--json]
+		usage: `boathook [--json] --session NAME cookies [--domain <domain>]
 
 Flags:
   --domain <domain>   Filter cookies by domain substring
-  --json              Output as JSON`,
+  --json (global)  Output as JSON`,
 	},
 	storage: {
 		summary: "Inspect localStorage or sessionStorage",
-		usage: `boathook --session NAME storage local [--json]      Show localStorage entries
-boathook --session NAME storage session [--json]  Show sessionStorage entries
+		usage: `boathook [--json] --session NAME storage local      Show localStorage entries
+boathook [--json] --session NAME storage session  Show sessionStorage entries
 
 Flags:
-  --json   Output as JSON`,
+  --json (global)  Output as JSON`,
 	},
 	html: {
 		summary: "Get page or element HTML",
@@ -565,7 +565,7 @@ Examples:
 	},
 	perf: {
 		summary: "Measure page performance (Core Web Vitals)",
-		usage: `boathook --session NAME perf [--budget <spec>] [--json]
+		usage: `boathook [--json] --session NAME perf [--budget <spec>]
 
 Collects Core Web Vitals and performance timing metrics for the current page.
 
@@ -574,16 +574,16 @@ Metrics: TTFB, FCP, LCP, CLS, DOM Content Loaded, Page Load, resource count, tra
 Flags:
   --budget <spec>   Performance budget check. Comma-separated metric=threshold pairs.
                     Metrics: ttfb, fcp, lcp (ms), cls (score), dcl, load (ms).
-  --json            Output as JSON
+  --json (global)  Output as JSON
 
 Examples:
   boathook --session NAME perf
   boathook --session NAME perf --budget lcp=2500,cls=0.1,fcp=1800
-  boathook --session NAME perf --json`,
+  boathook --json --session NAME perf`,
 	},
 	security: {
 		summary: "Run security audit (headers, cookies, mixed content)",
-		usage: `boathook --session NAME security [--json]
+		usage: `boathook [--json] --session NAME security
 
 Audits the current page for common security issues:
   - Security headers (HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy)
@@ -591,15 +591,15 @@ Audits the current page for common security issues:
   - Mixed content detection (HTTP resources on HTTPS pages)
 
 Flags:
-  --json   Output as JSON
+  --json (global)  Output as JSON
 
 Examples:
   boathook --session NAME security
-  boathook --session NAME security --json`,
+  boathook --json --session NAME security`,
 	},
 	responsive: {
 		summary: "Capture screenshots across viewport breakpoints",
-		usage: `boathook --session NAME responsive [--breakpoints <spec>] [--url <url>] [--out <dir>] [--json]
+		usage: `boathook [--json] --session NAME responsive [--breakpoints <spec>] [--url <url>] [--out <dir>]
 
 Captures full-page screenshots at multiple viewport sizes for responsive testing.
 
@@ -609,7 +609,7 @@ Flags:
   --breakpoints <spec>   Custom breakpoints as comma-separated WxH (e.g. 320x568,768x1024,1920x1080)
   --url <url>            URL to test (defaults to current page, reloading at each breakpoint)
   --out <dir>            Output directory (default: the session artifacts/responsive directory)
-  --json                 Output as JSON
+  --json (global)  Output as JSON
 
 Examples:
   boathook --session NAME responsive
@@ -641,7 +641,7 @@ Examples:
 	},
 	extract: {
 		summary: "Extract structured data from the page",
-		usage: `boathook --session NAME extract <subcommand> [args] [--json]
+		usage: `boathook [--json] --session NAME extract <subcommand> [args]
 
 Subcommands:
   table <selector|@ref>              Extract HTML table as structured data
@@ -650,7 +650,7 @@ Subcommands:
   select <selector> [--attr <name>]  Extract matching elements' text or attribute
 
 Flags:
-  --json              Output as JSON
+  --json (global)  Output as JSON
   --csv               Output table as CSV (table subcommand only)
   --filter <pattern>  Filter links by URL pattern (links subcommand only)
   --attr <name>       Extract specific attribute (select subcommand only)
@@ -658,7 +658,7 @@ Flags:
 Examples:
   boathook --session NAME extract table "table.results"
   boathook --session NAME extract links --filter "example\\.com"
-  boathook --session NAME extract meta --json
+  boathook --json --session NAME extract meta
   boathook --session NAME extract select "h2" --attr id`,
 	},
 	throttle: {
@@ -721,7 +721,7 @@ Flags:
   --allow-external         Allow following links to other public origins
   --allow-private-network  Allow external links to private-network hosts
   --dry-run                Collect URLs without extracting data
-  --json                   Output as JSON
+  --json (global)  Output as JSON
 
 Examples:
   boathook --session NAME crawl https://example.com
@@ -773,7 +773,7 @@ Flags:
   --threshold <n>    Diff threshold percentage (default: from config, typically 5)
   --all              Update all baselines (for update)
   --only <names>     Update specific baselines (for update)
-  --json             Output results as JSON (for check)
+  --json (global)  Output results as JSON (for check)
 
 Configuration is stored in .boathook/vrt/config.json.
 
@@ -792,18 +792,18 @@ Watches a flow file for changes and re-runs it automatically.`,
 	},
 	seo: {
 		summary: "Run SEO audit on the current page",
-		usage: `boathook --session NAME seo [url] [--check <categories>] [--score] [--json]
+		usage: `boathook [--json] --session NAME seo [url] [--check <categories>] [--score]
 
 Audits: meta tags, headings, images, links, structured data, Open Graph.
 
 Flags:
   --check <list>   Audit specific categories (meta,headings,images,links)
   --score          Include a numeric score
-  --json           Output as JSON
+  --json (global)  Output as JSON
 
 Examples:
   boathook --session NAME seo
-  boathook --session NAME seo https://example.com --json`,
+  boathook --json --session NAME seo https://example.com`,
 	},
 	subscribe: {
 		summary: "Subscribe to real-time browser events",
@@ -832,34 +832,34 @@ Subcommands:
 	},
 	compliance: {
 		summary: "Run cookie consent and privacy compliance audit",
-		usage: `boathook --session NAME compliance [url] [--standard <gdpr|ccpa|eprivacy>] [--json]
+		usage: `boathook [--json] --session NAME compliance [url] [--standard <gdpr|ccpa|eprivacy>]
 
 Checks: pre-consent cookies, consent banner, third-party trackers, privacy policy links.
 
 Flags:
   --standard <std>   Compliance standard (default: gdpr)
-  --json             Output as JSON
+  --json (global)  Output as JSON
 
 Examples:
   boathook --session NAME compliance https://example.com
-  boathook --session NAME compliance --standard gdpr --json`,
+  boathook --json --session NAME compliance --standard gdpr`,
 	},
 	"security-scan": {
 		summary: "Run active security scans (XSS, CSRF, clickjacking)",
-		usage: `boathook --session NAME security-scan [--checks <types>] [--verbose] [--json]
+		usage: `boathook [--json] --session NAME security-scan [--checks <types>] [--verbose]
 
 Active security testing: XSS probing, CSP analysis, clickjacking, form security.
 
 Flags:
   --checks <types>   Comma-separated scan types: xss,redirect,clickjack,csp,forms
   --verbose          Show every payload tested
-  --json             Output as JSON
+  --json (global)  Output as JSON
 
 Note: Only run against applications you have permission to test.`,
 	},
 	i18n: {
 		summary: "Multi-locale testing and translation checks",
-		usage: `boathook i18n [subcommand] --locales <en,fr,de,...> [--url <url>] [--json]
+		usage: `boathook [--json] i18n [subcommand] --locales <en,fr,de,...> [--url <url>]
 
 Subcommands:
   check-keys --url <url> --pattern <regex>   Check for untranslated strings
@@ -869,11 +869,11 @@ Flags:
   --locales <list>     Comma-separated locale codes
   --url <url>          URL to test
   --pattern <regex>    Regex for untranslated keys (default: UPPER_SNAKE_CASE)
-  --json               Output as JSON`,
+  --json (global)  Output as JSON`,
 	},
 	"api-assert": {
 		summary: "Assert on API request/response from the browser",
-		usage: `boathook --session NAME api-assert <url-pattern> [--status <code>] [--timing "<Nms"] [--schema <path>] [--json]
+		usage: `boathook [--json] --session NAME api-assert <url-pattern> [--status <code>] [--timing "<Nms"] [--schema <path>]
 
 Waits for a matching network request and validates assertions.
 
@@ -885,7 +885,7 @@ Flags:
   --body-contains <string>   Response must contain string
   --max-size <size>          Max response size (e.g., 500kb)
   --header <name: value>     Expected response header
-  --timeout <ms>             Wait timeout (default: 10000)
+  --timeout <ms>             Global command deadline
 
 Examples:
   boathook --session NAME api-assert /api/users --status 200 --timing "<500ms"
@@ -893,15 +893,15 @@ Examples:
 	},
 	"design-audit": {
 		summary: "Compare page styles against design tokens",
-		usage: `boathook --session NAME design-audit --tokens <tokens.json> [--check colors,fonts] [--selector <sel>] [--json]
-boathook --session NAME design-audit --extract [--json]
+		usage: `boathook [--json] --session NAME design-audit --tokens <tokens.json> [--check colors,fonts] [--selector <sel>]
+boathook [--json] --session NAME design-audit --extract
 
 Flags:
   --tokens <path>      Design tokens JSON file
   --check <list>       Audit categories (colors, fonts)
   --selector <sel>     Scope to CSS selector
   --extract            Extract styles only (no comparison)
-  --json               Output as JSON`,
+  --json (global)  Output as JSON`,
 	},
 	"doc-capture": {
 		summary: "Capture annotated screenshots for documentation",
@@ -954,6 +954,6 @@ Flags:
   --config <path>      Monitor config file (default: monitor.json)
   --last <duration>    Filter history (e.g., 24h, 7d)
   --site <name>        Filter by site name
-  --json               Output as JSON`,
+  --json               Format monitor results as JSON`,
 	},
 };
