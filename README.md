@@ -12,7 +12,7 @@ Install the latest stable release on Linux x86-64 or macOS (Apple Silicon and In
 bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/Mobiwuhu/boathook/main/install.sh | bash -s -- --latest'
 ```
 
-The installer puts `boathook` in `~/.local/bin` and prepares the Bun and Chrome for Testing versions pinned in the release. Running the command again reuses the installed files for the same version. To install from a downloaded archive, unpack it and run `bash install.sh`.
+The installer puts `boathook` in `~/.local/bin` and downloads the Chrome for Testing version pinned in the release. Bun is built into the boathook executable. Running the command again reuses the installed files for the same version. To install from a downloaded archive, unpack it and run `bash install.sh`.
 
 To install from a source checkout, use the Bun version in `.bun-version` and run `bash setup.sh`. Set `BOATHOOK_CHROME_EXECUTABLE` to the path of an installed Chrome before running `setup.sh` to use that browser. To build and check the executable in the checkout, use an installed Chrome and run these commands.
 

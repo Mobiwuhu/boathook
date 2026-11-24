@@ -5,7 +5,7 @@ import { z } from "incur";
 import parsePackageArg from "npm-package-arg";
 import { ensurePrivateDirectory, readJson, writeRecord } from "../files.ts";
 import { stateRoot } from "../paths.ts";
-import { bunExecutable } from "../runtime.ts";
+import { bunCliEnv } from "../runtime.ts";
 import { pluginDirectory, recordInstalledPlugin } from "./catalog.ts";
 import { describePlugin } from "./manifest.ts";
 import { importProductPlugin } from "./modules.ts";
@@ -24,9 +24,10 @@ function isRegistryPackage(source: string): boolean {
 	}
 }
 
-function runBun(bun: string, args: string[], cwd: string): Promise<number> {
-	return Bun.spawn([bun, ...args], {
+function runBun(args: string[], cwd: string): Promise<number> {
+	return Bun.spawn([process.execPath, ...args], {
 		cwd,
+		env: bunCliEnv(),
 		stdin: "ignore",
 		stdout: "ignore",
 		stderr: "ignore",
@@ -52,12 +53,6 @@ export async function installPlugin(source: string) {
 			"请提供本地插件包或 npm 包名，可附版本。",
 		);
 	}
-	const bun = bunExecutable();
-	if (!bun)
-		throw new CommandError(
-			"BUN_REQUIRED",
-			"安装插件需要 Bun，请使用发行版安装脚本或将 bun 加入 PATH。",
-		);
 	ensurePrivateDirectory(stateRoot());
 	const root = ensurePrivateDirectory(pluginDirectory());
 	const packages = ensurePrivateDirectory(join(root, "packages"));
@@ -69,7 +64,6 @@ export async function installPlugin(source: string) {
 		if (packDirectory) {
 			const filename = "plugin.tgz";
 			const packed = await runBun(
-				bun,
 				[
 					"pm",
 					"pack",
@@ -89,7 +83,6 @@ export async function installPlugin(source: string) {
 		}
 		if (
 			(await runBun(
-				bun,
 				["add", "--ignore-scripts", "--exact", input],
 				directory,
 			)) !== 0

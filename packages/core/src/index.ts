@@ -22,7 +22,7 @@ export { installedPlugins } from "./plugins/catalog.ts";
 export { installPlugin } from "./plugins/install.ts";
 export type { PluginManifest } from "./plugins/manifest.ts";
 export { importProductPlugin } from "./plugins/modules.ts";
-export { bunExecutable, chromeExecutable } from "./runtime.ts";
+export { chromeExecutable } from "./runtime.ts";
 export { checkLogin, requireLogin } from "./session/login-check.ts";
 export { sessionPaths } from "./session/paths.ts";
 export { DEFAULT_SESSION_IDLE_SECONDS } from "./session/process.ts";

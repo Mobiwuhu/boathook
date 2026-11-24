@@ -45,7 +45,7 @@ const chrome = {
 	sha256: chromeBuild.sha256,
 	directory: chromeDirectory,
 };
-const executables = ["bin/boathook", "bin/bun", "install.sh"];
+const executables = ["bin/boathook", "install.sh"];
 type PackagedPlugin = { id: string; version: string; file: string };
 
 async function run(args: string[], cwd = repo): Promise<void> {
@@ -198,7 +198,6 @@ try {
 	});
 	await Promise.all([
 		copyFile(binary, join(directory, "bin/boathook")),
-		copyFile(process.execPath, join(directory, "bin/bun")),
 		copyFile(join(repo, "install.sh"), join(directory, "install.sh")),
 		copyFile(
 			join(repo, "scripts/install-entry.sh"),

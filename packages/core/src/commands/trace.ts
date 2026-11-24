@@ -10,7 +10,7 @@ import {
 	TRACE_ARTIFACT_KIND,
 } from "../artifacts.ts";
 import type { Response } from "../ipc/protocol.ts";
-import { bunExecutable } from "../runtime.ts";
+import { bunCliEnv } from "../runtime.ts";
 
 export type TraceState = {
 	recording: boolean;
@@ -67,6 +67,7 @@ function defaultSpawn(
 	args: string[],
 ): { pid: number | undefined } {
 	const proc = Bun.spawn([cmd, ...args], {
+		env: bunCliEnv(),
 		stdio: ["ignore", "ignore", "ignore"],
 	});
 	proc.unref();
@@ -292,13 +293,6 @@ export async function handleTrace(
 			};
 		}
 
-		// Build playwright show-trace command
-		const bun = bunExecutable();
-		if (!bun)
-			return {
-				ok: false,
-				error: "打开 trace 需要 Bun，请检查发行包安装或将 bun 加入 PATH。",
-			};
 		const localBin = join(process.cwd(), "node_modules", ".bin", "playwright");
 		const showTraceArgs = existsSync(localBin)
 			? [localBin, "show-trace"]
@@ -312,7 +306,7 @@ export async function handleTrace(
 		const spawn = deps?.spawn ?? defaultSpawn;
 
 		try {
-			const { pid } = spawn(bun, showTraceArgs);
+			const { pid } = spawn(process.execPath, showTraceArgs);
 
 			const parts = [`Trace viewer opened for ${basename(tracePath)}`];
 			if (port) {

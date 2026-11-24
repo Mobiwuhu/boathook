@@ -7,13 +7,9 @@ export function releaseDirectory(): string | undefined {
 	return compiledExecutable ? dirname(dirname(process.execPath)) : undefined;
 }
 
-export function bunExecutable(): string | null {
-	const override = process.env.BOATHOOK_BUN_EXECUTABLE;
-	if (override) return override;
-	if (!compiledExecutable) return process.execPath;
-	const release = releaseDirectory();
-	const bundled = release && join(release, "bin", "bun");
-	return bundled && existsSync(bundled) ? bundled : Bun.which("bun");
+export function bunCliEnv(): NodeJS.ProcessEnv {
+	// Run the invoked executable as Bun's CLI, even when it is compiled.
+	return { ...process.env, BUN_BE_BUN: "1" };
 }
 
 export function chromeExecutable(): string | undefined {

@@ -69,7 +69,8 @@ case "${1-}" in
   *) fail '用法为 bash install.sh [--dry-run]。' ;;
 esac
 cd -- "$package_dir"
-[[ -f manifest.json && -x bin/bun && -x bin/boathook ]] || fail '请先解压完整的 boathook 发行包。'
+[[ -f manifest.json && -x bin/boathook ]] || fail '请先解压完整的 boathook 发行包。'
+run_bun() { BUN_BE_BUN=1 ./bin/boathook "$@"; }
 tools=(curl unzip "${checksum_command[0]}" "${lock_command[0]}")
 if [[ $platform == linux-x64 ]]; then tools+=(ldd); fi
 for tool in "${tools[@]}"; do
@@ -78,7 +79,7 @@ done
 "${checksum_command[@]}" --check --quiet checksums.txt || fail '发行包校验失败，请重新获取发行包。'
 "${checksum_command[@]}" --check --quiet core-checksums.txt || fail '核心文件校验失败，请重新获取发行包。'
 
-manifest_text=$(./bin/bun -e '
+manifest_text=$(run_bun -e '
   const m = await Bun.file("manifest.json").json();
   console.log(m.version);
   console.log(m.platform);
@@ -101,7 +102,7 @@ resolve_install_paths
 release="$store/releases/$version"
 printf 'boathook %s → %s\n' "$version" "$release"
 printf '命令入口 %s\n' "$entry"
-printf 'Bun %s 随包提供\n' "${manifest[6]}"
+printf '内置 Bun %s\n' "${manifest[6]}"
 printf 'Chrome for Testing %s\n%s\nSHA-256 %s\n' "${manifest[2]}" "${manifest[3]}" "${manifest[4]}"
 printf '可按 ID 启用的插件 %s\n' "${manifest[7]}"
 [[ ${1-} != --dry-run ]] || exit 0
@@ -140,13 +141,14 @@ MAC_CHROME_LAUNCHER
     chmod 755 "$stage/chrome/chrome"
   fi
   cp -R -- bin licenses scripts install.sh core-checksums.txt manifest.json "$stage/"
-  env -u BOATHOOK_CHROME_EXECUTABLE -u BOATHOOK_BUN_EXECUTABLE "$stage/bin/boathook" --json doctor
-  ./bin/bun -e 'import { renameSync } from "node:fs"; renameSync(process.argv[1], process.argv[2]);' "$stage" "$release"
+  env -u BOATHOOK_CHROME_EXECUTABLE -u BUN_BE_BUN "$stage/bin/boathook" --json doctor
+  run_bun -e 'import { renameSync } from "node:fs"; renameSync(process.argv[1], process.argv[2]);' "$stage" "$release"
   trap - EXIT
 fi
-BOATHOOK_STATE_DIR="$store" ./bin/bun -e '
+BOATHOOK_STATE_DIR="$store" run_bun -e '
   const { plugins } = await Bun.file("manifest.json").json();
   const env = { ...process.env, BOATHOOK_SESSION: "" };
+  delete env.BUN_BE_BUN;
   const binary = process.argv[1];
   for (const { id, version, file } of plugins) {
     if (!/^plugins\/[a-zA-Z0-9_.%+-]+\.tgz$/.test(file)) {

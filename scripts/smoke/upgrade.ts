@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readlink, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readlink, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { releaseDirectoryName } from "../../apps/cli/src/release.ts";
@@ -16,8 +16,8 @@ const env = {
 	BOATHOOK_BIN_DIR: bin,
 };
 delete env.BOATHOOK_CHROME_EXECUTABLE;
-delete env.BOATHOOK_BUN_EXECUTABLE;
 delete env.BOATHOOK_SESSION;
+delete env.BUN_BE_BUN;
 const page = Bun.serve({
 	hostname: "127.0.0.1",
 	port: 0,
@@ -117,7 +117,7 @@ try {
 	const release = join(state, "releases", to);
 	assert.equal(await readlink(binary), join(release, "bin/boathook"));
 	const doctor = JSON.parse(await run([binary, "--json", "doctor"])).data;
-	assert.equal(doctor.packageManager, join(release, "bin/bun"));
+	assert.equal(doctor.packageManager, await realpath(binary));
 	assert.equal(doctor.chrome, join(release, "chrome/chrome"));
 	assert.equal(
 		JSON.parse(await run([binary, "--json", "status", "qa"])).data.pid,
@@ -140,7 +140,7 @@ try {
 		"current",
 	);
 	console.log(
-		`PASS: upgraded ${from} to ${to}, activated the bundled Chrome and Bun, and reopened the saved profile`,
+		`PASS: upgraded ${from} to ${to}, activated the new CLI and Chrome, and reopened the saved profile`,
 	);
 } finally {
 	try {

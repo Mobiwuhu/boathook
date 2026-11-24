@@ -15,7 +15,7 @@ bun run test:network
 
 `bun run check` runs Biome, checks package boundaries, and checks the plugin SDK types. The build writes `dist/boathook`. The browser tests use temporary state directories and loopback servers. The network suite also needs OpenSSL. Set `BOATHOOK_CHROME_EXECUTABLE` if Chrome is outside the default location. Set `BOATHOOK_SMOKE_BINARY` to exercise a compiled executable moved outside the checkout.
 
-Run `bash setup.sh` from a checkout to build the current source and install the command. On Linux x86-64 and macOS (Apple Silicon or Intel), run `bash install.sh` from the matching unpacked release to verify its files and install the bundled CLI and Bun with Chrome. Both use `~/.local/bin` by default and accept `BOATHOOK_BIN_DIR` and `BOATHOOK_STATE_DIR`.
+Run `bash setup.sh` from a checkout to build the current source and install the command. On Linux x86-64 and macOS (Apple Silicon or Intel), run `bash install.sh` from the matching unpacked release to verify its files and install boathook with Chrome. The installer and boathook reuse the Bun runtime built into the boathook executable. Both scripts use `~/.local/bin` by default and accept `BOATHOOK_BIN_DIR` and `BOATHOOK_STATE_DIR`.
 
 Run `bun run build:docker` to build an optional image with the compiled CLI and Chrome. It uses the Bun version in `.bun-version`.
 
@@ -44,7 +44,7 @@ Set `BOATHOOK_RELEASE_REPO=OWNER/REPO` when building a distribution outside GitH
 
 The archive includes the project license and Bun license in `licenses/`. The release build uses the compiler's module list to collect notices for bundled dependencies and writes their versions, licenses, and MPL source links in `licenses/THIRD-PARTY.md`. Bundled plugin packages carry their notices alongside their compiled entry points.
 
-With two locally built versions on Linux, run `bun run test:upgrade OLD.tar.gz NEW.tar.gz`. The smoke test checks availability, rejects a damaged archive with the previous installation still active, switches the CLI and its bundled runtimes, then reopens a saved browser profile.
+With two release archives on Linux, run `bun run test:upgrade OLD.tar.gz NEW.tar.gz`. The smoke test checks availability, rejects a damaged archive with the previous installation still active, switches the CLI and Chrome, then reopens a saved browser profile.
 
 ## Browser checks in GitHub Actions
 

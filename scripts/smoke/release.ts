@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -13,8 +13,8 @@ assert(archives.length > 0, "Usage: bun run test:release RELEASE.tar.gz [...]");
 const storage = await mkdtemp(join(tmpdir(), "boathook-release-"));
 const env = { ...process.env };
 delete env.BOATHOOK_CHROME_EXECUTABLE;
-delete env.BOATHOOK_BUN_EXECUTABLE;
 delete env.BOATHOOK_SESSION;
+delete env.BUN_BE_BUN;
 env.BOATHOOK_STATE_DIR = join(storage, "state");
 env.BOATHOOK_BIN_DIR = join(storage, "bin");
 const binary = join(env.BOATHOOK_BIN_DIR, "boathook");
@@ -117,7 +117,10 @@ try {
 		await run(["bash", "install.sh", "--dry-run"], release);
 		await run(["bash", "install.sh"], release);
 		const installedRelease = join(env.BOATHOOK_STATE_DIR, "releases", version);
-		const runtimeFiles = ["bin/boathook", "bin/bun", "chrome/chrome"];
+		assert.deepEqual(await readdir(join(installedRelease, "bin")), [
+			"boathook",
+		]);
+		const runtimeFiles = ["bin/boathook", "chrome/chrome"];
 		const runtimeInodes = await Promise.all(
 			runtimeFiles.map(
 				async (file) => (await stat(join(installedRelease, file))).ino,
@@ -131,12 +134,14 @@ try {
 				),
 			),
 			runtimeInodes,
-			"Reinstalling the same version must reuse the CLI, Bun, and Chrome",
+			"Reinstalling the same version must reuse the CLI and Chrome",
 		);
 		assert(
 			(await run([binary, "--version"])).startsWith(`boathook ${version} (`),
 		);
-		assert.equal(JSON.parse(await run([binary, "--json", "doctor"])).ok, true);
+		const doctor = JSON.parse(await run([binary, "--json", "doctor"]));
+		assert.equal(doctor.ok, true);
+		assert.equal(doctor.data.packageManager, await realpath(binary));
 		const installed = JSON.parse(
 			await run([binary, "--json", "plugin", "ls"]),
 		).data;

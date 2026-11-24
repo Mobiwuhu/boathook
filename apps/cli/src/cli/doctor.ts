@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	bunExecutable,
 	chromeExecutable,
 	sessionRequest,
 	startSession,
@@ -36,7 +35,7 @@ export async function doctor() {
 		return {
 			ready: true,
 			bun: Bun.version,
-			packageManager: bunExecutable(),
+			packageManager: process.execPath,
 			chrome: chromeExecutable() ?? "system",
 			headless: true,
 		};
