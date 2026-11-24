@@ -1,0 +1,15 @@
+.agents
+.boathook
+.git
+.github
+.worktrees
+benchmarks
+coverage
+dist
+**/dist
+docs
+examples
+node_modules
+**/node_modules
+opensrc
+test

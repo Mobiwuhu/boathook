@@ -1,0 +1,60 @@
+name: boathook
+description: Run a browser command in a disposable boathook session
+inputs:
+  args:
+    description: Command and arguments as a JSON array of strings
+    default: '["snapshot", "-i"]'
+  config-json:
+    description: JSON settings for the browser session
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: ${{ github.action_path }}/../../../.bun-version
+    - name: Build boathook
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      run: |
+        bun install --frozen-lockfile
+        bun run build
+    - name: Install Chromium
+      shell: bash
+      working-directory: ${{ github.action_path }}/../../..
+      run: |
+        if [[ "$RUNNER_OS" == Linux ]]; then
+          bun ./node_modules/playwright/cli.js install chromium --with-deps
+        else
+          bun ./node_modules/playwright/cli.js install chromium
+        fi
+        chrome_path=$(bun -e 'import { chromium } from "playwright"; console.log(chromium.executablePath())')
+        test -x "$chrome_path"
+        echo "BOATHOOK_CHROME_EXECUTABLE=$chrome_path" >> "$GITHUB_ENV"
+    - name: Run boathook command
+      shell: bash
+      env:
+        BOATHOOK_QA_ARGS: ${{ inputs.args }}
+        BOATHOOK_QA_CONFIG_JSON: ${{ inputs.config-json }}
+        BOATHOOK_QA_BINARY: ${{ github.action_path }}/../../../dist/boathook
+      run: |
+        export BOATHOOK_STATE_DIR=$(mktemp -d)
+        cleanup() {
+          if "$BOATHOOK_QA_BINARY" stop qa >/dev/null 2>&1; then
+            rm -rf "$BOATHOOK_STATE_DIR"
+          fi
+        }
+        trap cleanup EXIT
+        config=()
+        if [[ -n "$BOATHOOK_QA_CONFIG_JSON" ]]; then config=(--config-json "$BOATHOOK_QA_CONFIG_JSON"); fi
+        "$BOATHOOK_QA_BINARY" start qa "${config[@]}"
+        bun -e '
+          const args = JSON.parse(process.env.BOATHOOK_QA_ARGS);
+          if (!Array.isArray(args) || !args.length || args.some(arg => typeof arg !== "string")) {
+            throw new Error("The args input must be a non-empty JSON array of strings.");
+          }
+          const result = Bun.spawnSync([process.env.BOATHOOK_QA_BINARY, "--session", "qa", ...args], {
+            stdin: "inherit", stdout: "inherit", stderr: "inherit",
+          });
+          process.exit(result.exitCode ?? 1);
+        '

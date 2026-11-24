@@ -1,0 +1,5 @@
+[install]
+ignoreScripts = true
+
+[test]
+root = "./test"

@@ -1,0 +1,82 @@
+{
+	"forbidden": [
+		{
+			"name": "cli-is-an-entry-point",
+			"severity": "error",
+			"from": {
+				"path": "^packages/"
+			},
+			"to": {
+				"path": "^apps/"
+			}
+		},
+		{
+			"name": "cli-uses-core-exports",
+			"severity": "error",
+			"from": {
+				"path": "^apps/"
+			},
+			"to": {
+				"path": "^packages/core/",
+				"pathNot": "^packages/core/src/(?:index[.]ts|daemon/main[.]ts)$"
+			}
+		},
+		{
+			"name": "plugins-use-sdk",
+			"severity": "error",
+			"from": {
+				"path": "^packages/(?!core/)"
+			},
+			"to": {
+				"path": "^packages/core/"
+			}
+		},
+		{
+			"name": "product-loads-plugins-at-runtime",
+			"severity": "error",
+			"from": {
+				"path": "^(?:apps/|packages/(?:core|plugin-sdk)/)"
+			},
+			"to": {
+				"path": "^packages/(?!(?:core|plugin-sdk)/)"
+			}
+		},
+		{
+			"name": "no-runtime-cycles",
+			"severity": "error",
+			"from": {
+				"path": "^(?:apps|packages)/"
+			},
+			"to": {
+				"circular": true,
+				"viaOnly": {
+					"dependencyTypesNot": ["type-only"]
+				}
+			}
+		},
+		{
+			"name": "no-missing-imports",
+			"severity": "error",
+			"from": {
+				"path": "^(?:apps|packages)/"
+			},
+			"to": {
+				"couldNotResolve": true,
+				"dependencyTypesNot": ["core"]
+			}
+		}
+	],
+	"options": {
+		"doNotFollow": {
+			"path": "^node_modules"
+		},
+		"tsPreCompilationDeps": true,
+		"enhancedResolveOptions": {
+			"exportsFields": ["exports"],
+			"conditionNames": ["bun", "import", "default"]
+		},
+		"exclude": {
+			"path": "(?:^|/)(?:node_modules|dist)/"
+		}
+	}
+}

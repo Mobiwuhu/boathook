@@ -1,0 +1,59 @@
+name: Build boathook release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      with_plugins:
+        description: Include the optional headers plugin
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Check release tag
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(bun -e 'import pkg from "./apps/cli/package.json"; console.log("v" + pkg.version)')
+          if [[ "$GITHUB_REF_NAME" != "$version" ]]; then
+            printf 'Tag must match the CLI package version (%s).\n' "$version" >&2
+            exit 1
+          fi
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+      - run: bun run release
+        if: github.event_name == 'push' || inputs.with_plugins == false
+      - run: bun run release --with-plugins
+        if: github.event_name == 'workflow_dispatch' && inputs.with_plugins == true
+      - name: Install and test the release archives
+        run: bun run test:release dist/boathook-linux-x64-*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: boathook-linux-x64
+          path: dist/boathook-linux-x64-*.tar.gz
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: boathook-linux-x64
+          path: dist
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes dist/*.tar.gz

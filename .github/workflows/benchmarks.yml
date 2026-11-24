@@ -1,0 +1,50 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      BOATHOOK_BENCHMARK_OUT_DIR: .benchmarks/ci
+      BOATHOOK_BENCHMARK_ITERATIONS: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install browser binaries
+        run: bun ./node_modules/playwright/cli.js install chrome --with-deps
+
+      - name: Build boathook
+        run: bun run build
+
+      - name: Run regression benchmark suite
+        continue-on-error: true
+        run: bun run bench:regression
+
+      - name: Run workload benchmark suite
+        continue-on-error: true
+        run: bun run bench:workloads
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: .benchmarks/ci
+          if-no-files-found: warn

@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-15-intel, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check repository
+        run: bun run check
+
+      - name: Run unit and fuzz tests
+        run: bun test
+
+      - name: Build boathook
+        run: bun run build
+
+      - name: Install Chromium (Linux)
+        if: runner.os == 'Linux'
+        run: bun ./node_modules/playwright/cli.js install chromium --with-deps
+
+      - name: Install Chromium (macOS)
+        if: runner.os == 'macOS'
+        run: bun ./node_modules/playwright/cli.js install chromium
+
+      - name: Set browser executable
+        shell: bash
+        run: |
+          chrome_path=$(bun -e 'import { chromium } from "playwright"; console.log(chromium.executablePath())')
+          test -x "$chrome_path"
+          echo "BOATHOOK_CHROME_EXECUTABLE=$chrome_path" >> "$GITHUB_ENV"
+
+      - name: Run boathook session smoke tests
+        run: bun run test:integration
+
+      - name: Run HTTP and WebSocket smoke tests
+        run: bun run test:network

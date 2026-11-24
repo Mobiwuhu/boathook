@@ -1,0 +1,615 @@
+import { describe, expect, mock, test } from "bun:test";
+import {
+	type AccessibilityNode,
+	assignRefs,
+	clearRefs,
+	markStale,
+} from "../packages/core/src/browser/refs.ts";
+import { handleClick } from "../packages/core/src/commands/click.ts";
+import { handleFill } from "../packages/core/src/commands/fill.ts";
+import { handleHover } from "../packages/core/src/commands/hover.ts";
+import { handlePress } from "../packages/core/src/commands/press.ts";
+import { handleSelect } from "../packages/core/src/commands/select.ts";
+
+function makeTree(...children: AccessibilityNode[]): AccessibilityNode {
+	return { role: "WebArea", name: "Page", children };
+}
+
+function mockPage() {
+	return {
+		keyboard: {
+			press: mock((_key: string) => Promise.resolve()),
+		},
+		url: mock(() => "https://example.com"),
+		waitForURL: mock(async () => {
+			throw new Error("timeout");
+		}),
+		getByRole: mock((_role: string, _opts?: Record<string, unknown>) => ({
+			nth: mock((_n: number) => ({
+				click: mock(() => Promise.resolve()),
+				fill: mock(() => Promise.resolve()),
+				hover: mock(() => Promise.resolve()),
+				selectOption: mock(() => Promise.resolve()),
+			})),
+			click: mock(() => Promise.resolve()),
+			fill: mock(() => Promise.resolve()),
+			hover: mock(() => Promise.resolve()),
+			selectOption: mock(() => Promise.resolve()),
+		})),
+	} as never;
+}
+
+describe("handleClick", () => {
+	test("clicks a resolved ref and returns confirmation", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "Submit", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleClick(page, ["@e1"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Clicked");
+			expect(result.data).toContain("@e1");
+			expect(result.data).toContain("Submit");
+		}
+	});
+
+	test("returns error when ref arg is missing", async () => {
+		clearRefs();
+		const page = mockPage();
+
+		const result = await handleClick(page, []);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+
+	test("returns error when ref does not start with @", async () => {
+		clearRefs();
+		const page = mockPage();
+
+		const result = await handleClick(page, ["e1"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("@");
+		}
+	});
+
+	test("returns error for unknown ref", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "OK", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleClick(page, ["@e99"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Unknown ref");
+		}
+	});
+
+	test("returns stale error after navigation", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "OK", children: [] }),
+			"default",
+		);
+		markStale();
+		const page = mockPage();
+
+		const result = await handleClick(page, ["@e1"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("stale");
+		}
+	});
+
+	test("clicks combobox elements with force to bypass actionability checks", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "combobox", name: "Select option...", children: [] }),
+			"default",
+		);
+
+		const clickMock = mock(() => Promise.resolve());
+		const page = {
+			getByRole: mock((_role: string, _opts?: Record<string, unknown>) => ({
+				nth: mock((_n: number) => ({
+					click: clickMock,
+				})),
+				click: clickMock,
+			})),
+		} as never;
+
+		const result = await handleClick(page, ["@e1"]);
+
+		expect(result.ok).toBe(true);
+		expect(clickMock).toHaveBeenCalledWith({ timeout: 10_000, force: true });
+	});
+
+	test("clicks non-combobox elements without force", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "Submit", children: [] }),
+			"default",
+		);
+
+		const clickMock = mock(() => Promise.resolve());
+		const page = {
+			getByRole: mock((_role: string, _opts?: Record<string, unknown>) => ({
+				nth: mock((_n: number) => ({
+					click: clickMock,
+				})),
+				click: clickMock,
+			})),
+		} as never;
+
+		const result = await handleClick(page, ["@e1"]);
+
+		expect(result.ok).toBe(true);
+		expect(clickMock).toHaveBeenCalledWith({ timeout: 10_000 });
+	});
+});
+
+describe("handleFill", () => {
+	test("fills a textbox and returns confirmation", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "textbox", name: "Email", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleFill(page, ["@e1", "test@example.com"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Filled");
+			expect(result.data).toContain("@e1");
+			expect(result.data).toContain("test@example.com");
+		}
+	});
+
+	test("joins multi-word values", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "textbox", name: "Search", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleFill(page, ["@e1", "hello", "world"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("hello world");
+		}
+	});
+
+	test("returns error when ref is missing", async () => {
+		clearRefs();
+		const page = mockPage();
+
+		const result = await handleFill(page, []);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+
+	test("returns error when value is missing", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "textbox", name: "Email", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleFill(page, ["@e1"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+
+	test("returns error when target is not a fillable element", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "Submit", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleFill(page, ["@e1", "text"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("not a fillable element");
+		}
+	});
+
+	test("allows filling searchbox elements", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "searchbox", name: "Search", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleFill(page, ["@e1", "query"]);
+
+		expect(result.ok).toBe(true);
+	});
+});
+
+describe("handleSelect", () => {
+	test("selects an option and returns confirmation", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "combobox", name: "Role", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleSelect(page, ["@e1", "Admin"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Selected");
+			expect(result.data).toContain("Admin");
+			expect(result.data).toContain("@e1");
+		}
+	});
+
+	test("returns error when ref is missing", async () => {
+		clearRefs();
+		const page = mockPage();
+
+		const result = await handleSelect(page, []);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+
+	test("returns error when option is missing", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "combobox", name: "Role", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleSelect(page, ["@e1"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+
+	test("returns error when target is not a selectable element", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "Submit", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleSelect(page, ["@e1", "Option"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("not a selectable element");
+		}
+	});
+
+	test("allows selecting from listbox elements", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "listbox", name: "Options", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleSelect(page, ["@e1", "Item 1"]);
+
+		expect(result.ok).toBe(true);
+	});
+
+	test("falls back to keyboard-based selection for custom ARIA comboboxes", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "combobox", name: "Placeholder...", children: [] }),
+			"default",
+		);
+
+		const optionClickMock = mock(() => Promise.resolve());
+		const focusMock = mock(() => Promise.resolve());
+		const pressMock = mock(() => Promise.resolve());
+		const page = {
+			keyboard: { press: pressMock },
+			getByRole: mock((role: string, _opts?: Record<string, unknown>) => {
+				if (role === "option") {
+					return {
+						click: optionClickMock,
+					};
+				}
+				return {
+					nth: mock(() => ({
+						selectOption: mock(() => {
+							throw new Error("Element is not a <select> element");
+						}),
+						focus: focusMock,
+					})),
+					selectOption: mock(() => {
+						throw new Error("Element is not a <select> element");
+					}),
+					focus: focusMock,
+				};
+			}),
+		} as never;
+
+		const result = await handleSelect(page, ["@e1", "Aatrox"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Selected");
+			expect(result.data).toContain("Aatrox");
+		}
+		// Should have focused the trigger, pressed ArrowDown, then clicked the option
+		expect(focusMock).toHaveBeenCalledWith({ timeout: 10_000 });
+		expect(pressMock).toHaveBeenCalledWith("ArrowDown");
+		expect(optionClickMock).toHaveBeenCalledWith({ timeout: 10_000 });
+	});
+
+	test("propagates non-select errors without fallback", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "combobox", name: "Role", children: [] }),
+			"default",
+		);
+
+		const page = {
+			getByRole: mock(() => ({
+				nth: mock(() => ({
+					selectOption: mock(() => {
+						throw new Error("Timeout 10000ms exceeded.");
+					}),
+				})),
+				selectOption: mock(() => {
+					throw new Error("Timeout 10000ms exceeded.");
+				}),
+			})),
+		} as never;
+
+		const result = await handleSelect(page, ["@e1", "Admin"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Timeout");
+		}
+	});
+});
+
+describe("handlePress", () => {
+	test("presses a single key and returns confirmation", async () => {
+		const page = mockPage();
+
+		const result = await handlePress(page, ["Tab"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Pressed");
+			expect(result.data).toContain("Tab");
+		}
+		expect(page.keyboard.press).toHaveBeenCalledTimes(1);
+		expect(page.keyboard.press).toHaveBeenCalledWith("Tab");
+	});
+
+	test("presses multiple sequential keys", async () => {
+		const page = mockPage();
+
+		const result = await handlePress(page, ["Tab", "Tab", "Tab"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Tab, Tab, Tab");
+		}
+		expect(page.keyboard.press).toHaveBeenCalledTimes(3);
+	});
+
+	test("presses a key combination", async () => {
+		const page = mockPage();
+
+		const result = await handlePress(page, ["Shift+Tab"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Shift+Tab");
+		}
+		expect(page.keyboard.press).toHaveBeenCalledWith("Shift+Tab");
+	});
+
+	test("returns error when no key is provided", async () => {
+		const page = mockPage();
+
+		const result = await handlePress(page, []);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+
+	test("propagates Playwright errors", async () => {
+		const page = mockPage();
+		(page.keyboard.press as ReturnType<typeof mock>).mockImplementation(() => {
+			throw new Error("keyboard.press: Unknown key: FooBar");
+		});
+
+		const result = await handlePress(page, ["FooBar"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Unknown key");
+		}
+	});
+
+	test("detects navigation after key press and includes warning", async () => {
+		let currentUrl = "https://example.com/form";
+		const page = {
+			...mockPage(),
+			url: mock(() => currentUrl),
+			waitForURL: mock(async () => {
+				// Simulate navigation completing during waitForURL
+				currentUrl = "https://example.com/submitted";
+			}),
+		} as never;
+
+		const result = await handlePress(page, ["Enter"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Pressed Enter");
+			expect(result.data).toContain("Navigated to:");
+			expect(result.data).toContain("https://example.com/submitted");
+		}
+	});
+
+	test("does not report navigation when URL is unchanged", async () => {
+		const page = mockPage();
+
+		const result = await handlePress(page, ["Tab"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toBe("Pressed Tab");
+			expect(result.data).not.toContain("Navigated");
+		}
+	});
+});
+
+describe("handleHover", () => {
+	test("hovers a resolved ref and returns confirmation", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "Menu", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleHover(page, ["@e1"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Hovered");
+			expect(result.data).toContain("@e1");
+			expect(result.data).toContain("Menu");
+		}
+	});
+
+	test("returns error when ref arg is missing", async () => {
+		clearRefs();
+		const page = mockPage();
+
+		const result = await handleHover(page, []);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+
+	test("returns error when ref does not start with @", async () => {
+		clearRefs();
+		const page = mockPage();
+
+		const result = await handleHover(page, ["e1"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("@");
+		}
+	});
+
+	test("returns error for unknown ref", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "OK", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleHover(page, ["@e99"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Unknown ref");
+		}
+	});
+
+	test("returns stale error after navigation", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "OK", children: [] }),
+			"default",
+		);
+		markStale();
+		const page = mockPage();
+
+		const result = await handleHover(page, ["@e1"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("stale");
+		}
+	});
+
+	test("passes duration option when --duration flag is provided", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "link", name: "Info", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleHover(page, ["@e1", "--duration", "2000"]);
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Hovered");
+			expect(result.data).toContain("2000ms");
+		}
+	});
+
+	test("returns error for invalid duration value", async () => {
+		clearRefs();
+		assignRefs(
+			makeTree({ role: "button", name: "OK", children: [] }),
+			"default",
+		);
+		const page = mockPage();
+
+		const result = await handleHover(page, ["@e1", "--duration", "abc"]);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("duration");
+		}
+	});
+});

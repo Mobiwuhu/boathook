@@ -1,0 +1,24 @@
+{
+	"name": "@boathook/core",
+	"type": "module",
+	"private": true,
+	"exports": {
+		".": "./src/index.ts",
+		"./daemon": "./src/daemon/main.ts"
+	},
+	"dependencies": {
+		"@axe-core/playwright": "catalog:",
+		"@boathook/plugin-sdk": "workspace:*",
+		"incur": "catalog:",
+		"npm-package-arg": "catalog:",
+		"playwright": "catalog:",
+		"playwright-core": "catalog:",
+		"proper-lockfile": "catalog:",
+		"write-file-atomic": "catalog:"
+	},
+	"devDependencies": {
+		"@types/npm-package-arg": "catalog:",
+		"@types/proper-lockfile": "catalog:",
+		"@types/write-file-atomic": "catalog:"
+	}
+}

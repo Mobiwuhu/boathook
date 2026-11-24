@@ -1,0 +1,190 @@
+import type { Page } from "playwright";
+import type { CommandConfig } from "../config/schema.ts";
+import type { Response } from "../ipc/protocol.ts";
+
+export type DevServerConfig = {
+	command: string;
+	url: string;
+	timeout?: number;
+	reuseExisting?: boolean;
+	env?: Record<string, string>;
+	cwd?: string;
+};
+
+// Track spawned dev server processes for cleanup
+let activeDevProcess: {
+	proc: ReturnType<typeof Bun.spawn>;
+	url: string;
+	command: string;
+	pid: number;
+} | null = null;
+
+async function checkUrl(url: string): Promise<boolean> {
+	try {
+		const resp = await fetch(url, { signal: AbortSignal.timeout(3_000) });
+		return resp.status >= 200 && resp.status < 400;
+	} catch {
+		return false;
+	}
+}
+
+export async function handleDev(
+	_page: Page,
+	args: string[],
+	options?: { config?: CommandConfig | null },
+): Promise<Response> {
+	if (args.length === 0) {
+		return {
+			ok: false,
+			error: `Usage: boathook --session NAME dev <start|stop|status> [--flow <name>]
+
+Manages a dev server lifecycle.
+
+Configure in the session configuration:
+  {
+    "devServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:3000",
+      "timeout": 30000,
+      "reuseExisting": true
+    }
+  }
+
+Subcommands:
+  start          Start the dev server
+  stop           Stop the dev server
+  status         Check if dev server is running`,
+		};
+	}
+
+	const sub = args[0];
+
+	// Check for devServer config
+	const config = options?.config;
+	const devServer = (config as Record<string, unknown> | null)?.devServer as
+		| DevServerConfig
+		| undefined;
+
+	switch (sub) {
+		case "status": {
+			if (!devServer) {
+				return {
+					ok: true,
+					data: "Dev server: not configured (add devServer to the session configuration)",
+				};
+			}
+			const running = await checkUrl(devServer.url);
+			const tracked = activeDevProcess
+				? ` (tracked PID: ${activeDevProcess.pid})`
+				: "";
+			return {
+				ok: true,
+				data: running
+					? `Dev server: running at ${devServer.url}${tracked}`
+					: `Dev server: not running (${devServer.url})`,
+			};
+		}
+
+		case "start": {
+			if (!devServer) {
+				return {
+					ok: false,
+					error:
+						"No devServer configured. Add a devServer section to the session configuration.",
+				};
+			}
+
+			// Check if already running
+			if (devServer.reuseExisting !== false) {
+				const running = await checkUrl(devServer.url);
+				if (running) {
+					return {
+						ok: true,
+						data: `Dev server already running at ${devServer.url} (reusing existing)`,
+					};
+				}
+			}
+
+			// Spawn the dev server
+			try {
+				const env = { ...process.env, ...(devServer.env ?? {}) };
+				// Use shell to handle quoted arguments and paths correctly
+				const proc = Bun.spawn(["sh", "-c", devServer.command], {
+					cwd: devServer.cwd ?? process.cwd(),
+					env,
+					stdout: "ignore",
+					stderr: "ignore",
+				});
+
+				// Track the spawned process for later cleanup
+				activeDevProcess = {
+					proc,
+					url: devServer.url,
+					command: devServer.command,
+					pid: proc.pid,
+				};
+
+				// Poll for readiness
+				const timeout = devServer.timeout ?? 30_000;
+				const start = Date.now();
+				let ready = false;
+
+				while (Date.now() - start < timeout) {
+					ready = await checkUrl(devServer.url);
+					if (ready) break;
+					await new Promise((r) => setTimeout(r, 500));
+				}
+
+				if (!ready) {
+					proc.kill();
+					activeDevProcess = null;
+					return {
+						ok: false,
+						error: `Dev server failed to start within ${timeout}ms. Command: ${devServer.command}`,
+					};
+				}
+
+				const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+				return {
+					ok: true,
+					data: `Dev server ready at ${devServer.url} (PID: ${proc.pid}, ${elapsed}s)`,
+				};
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				return {
+					ok: false,
+					error: `Failed to start dev server: ${message}`,
+				};
+			}
+		}
+
+		case "stop": {
+			if (!activeDevProcess) {
+				return {
+					ok: true,
+					data: "No tracked dev server process to stop.\nIf the server was started externally, use Ctrl+C or kill the process manually.",
+				};
+			}
+
+			try {
+				activeDevProcess.proc.kill();
+				const msg = `Dev server stopped (PID: ${activeDevProcess.pid}, command: ${activeDevProcess.command})`;
+				activeDevProcess = null;
+				return { ok: true, data: msg };
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				activeDevProcess = null;
+				return {
+					ok: false,
+					error: `Failed to stop dev server: ${message}`,
+				};
+			}
+		}
+
+		default:
+			return {
+				ok: false,
+				error: `Unknown dev subcommand: "${sub}". Use: start, stop, status`,
+			};
+	}
+}

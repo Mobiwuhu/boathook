@@ -1,0 +1,14 @@
+{
+	"name": "@boathook/cli",
+	"version": "0.1.0",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"build": "bun build --compile --compile-autoload-package-json src/boathook.ts --outfile ../../dist/boathook --external electron --external chromium-bidi"
+	},
+	"dependencies": {
+		"@boathook/core": "workspace:*",
+		"@boathook/plugin-sdk": "workspace:*",
+		"incur": "catalog:"
+	}
+}

@@ -1,0 +1,448 @@
+import { describe, expect, mock, test } from "bun:test";
+import { handleFlow } from "../packages/core/src/commands/flow.ts";
+import type { CommandConfig } from "../packages/core/src/config/schema.ts";
+import { CustomReporterRegistry } from "../packages/core/src/flows/custom-reporter.ts";
+
+const BASE_CONFIG: CommandConfig = {
+	environments: {
+		staging: {
+			loginUrl: "https://example.com/login",
+			userEnvVar: "U",
+			passEnvVar: "P",
+			successCondition: { urlContains: "/dashboard" },
+		},
+	},
+	flows: {
+		signup: {
+			description: "Register a new user account",
+			variables: ["base_url", "test_email", "test_pass"],
+			steps: [
+				{ goto: "{{base_url}}/register" },
+				{ fill: { Email: "{{test_email}}" } },
+				{ click: "Submit" },
+			],
+		},
+		simple: {
+			description: "A simple flow",
+			steps: [{ goto: "https://example.com" }],
+		},
+	},
+};
+
+describe("handleFlow — flow list", () => {
+	test("lists all flows with descriptions and variables", async () => {
+		const result = await handleFlow(BASE_CONFIG, null as any, ["list"]);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("signup");
+			expect(result.data).toContain("Register a new user account");
+			expect(result.data).toContain("base_url");
+			expect(result.data).toContain("test_email");
+			expect(result.data).toContain("simple");
+			expect(result.data).toContain("A simple flow");
+		}
+	});
+
+	test("returns message when no flows configured", async () => {
+		const configNoFlows: CommandConfig = {
+			environments: BASE_CONFIG.environments,
+		};
+		const result = await handleFlow(configNoFlows, null as any, ["list"]);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("No flows defined");
+		}
+	});
+
+	test("lists no flows when no config exists", async () => {
+		const result = await handleFlow(null, null as any, ["list"]);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("No flows defined");
+		}
+	});
+
+	test("surfaces flow-load errors as a warnings block", async () => {
+		const result = await handleFlow(
+			BASE_CONFIG,
+			null as any,
+			["list"],
+			undefined,
+			undefined,
+			[
+				"Invalid broken.json: step 1 has invalid type. Valid step types: goto, click, ...",
+			],
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("signup");
+			expect(result.data).toContain("Warnings:");
+			expect(result.data).toContain("broken.json");
+			expect(result.data).toContain("invalid type");
+		}
+	});
+
+	test("shows warnings block when all flow files failed", async () => {
+		const configNoFlows: CommandConfig = {
+			environments: BASE_CONFIG.environments,
+		};
+		const result = await handleFlow(
+			configNoFlows,
+			null as any,
+			["list"],
+			undefined,
+			undefined,
+			["Invalid broken.json: step 1 has invalid type."],
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("Warnings:");
+			expect(result.data).toContain("broken.json");
+			expect(result.data).not.toContain("No flows defined");
+		}
+	});
+});
+
+describe("handleFlow — missing flow", () => {
+	test("returns error for unknown flow name", async () => {
+		const result = await handleFlow(BASE_CONFIG, null as any, ["nonexistent"]);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Unknown flow: 'nonexistent'");
+			expect(result.error).toContain("signup");
+			expect(result.error).toContain("simple");
+		}
+	});
+
+	test("shows '(none)' when no flows are configured", async () => {
+		const configNoFlows: CommandConfig = {
+			environments: BASE_CONFIG.environments,
+			flows: {},
+		};
+		const result = await handleFlow(configNoFlows, null as any, [
+			"nonexistent",
+		]);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("(none)");
+			expect(result.error).not.toEndWith("Available: .");
+		}
+	});
+});
+
+describe("handleFlow — missing variables", () => {
+	test("returns error listing missing variables", async () => {
+		const result = await handleFlow(BASE_CONFIG, null as any, [
+			"signup",
+			"--var",
+			"base_url=https://example.com",
+		]);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Missing variables");
+			expect(result.error).toContain("test_email");
+			expect(result.error).toContain("test_pass");
+			// base_url was provided, so it should not be in the missing list
+			const missingLine = result.error.split("\n")[0];
+			expect(missingLine).not.toContain("base_url");
+		}
+	});
+});
+
+describe("handleFlow — no flow name", () => {
+	test("returns usage error with no args", async () => {
+		const result = await handleFlow(BASE_CONFIG, null as any, []);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Usage");
+		}
+	});
+});
+
+describe("handleFlow — reporter validation", () => {
+	test("rejects invalid reporter", async () => {
+		const page = null as any;
+		const result = await handleFlow(BASE_CONFIG, page, [
+			"simple",
+			"--reporter",
+			"csv",
+		]);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Invalid reporter 'csv'");
+			expect(result.error).toContain("json");
+			expect(result.error).toContain("markdown");
+			expect(result.error).toContain("junit");
+			expect(result.error).toContain("tap");
+			expect(result.error).toContain("allure");
+			expect(result.error).toContain("html");
+		}
+	});
+
+	test("rejects --reporter with no value", async () => {
+		const page = null as any;
+		const result = await handleFlow(BASE_CONFIG, page, [
+			"simple",
+			"--reporter",
+		]);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Missing value for --reporter");
+		}
+	});
+
+	test("rejects --junit-property without the junit reporter", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			["simple", "--reporter", "json", "--junit-property", "environment=ci"],
+			deps as any,
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain(
+				"--junit-property requires --reporter junit",
+			);
+		}
+	});
+});
+
+// --- handleFlow with deps / execution tests ---
+
+function createMockDeps() {
+	return {
+		consoleBuffer: {
+			push: mock(() => {}),
+			drain: mock(() => []),
+			clear: mock(() => {}),
+		},
+		networkBuffer: {
+			push: mock(() => {}),
+			drain: mock(() => []),
+			clear: mock(() => {}),
+		},
+	};
+}
+
+function createMockFlowPage() {
+	return {
+		url: () => "https://example.com",
+		goto: mock(async () => null),
+		innerText: mock(async () => ""),
+		locator: (_sel: string) => ({
+			first: () => ({
+				isVisible: mock(async () => true),
+				innerText: mock(async () => ""),
+			}),
+			count: mock(async () => 0),
+		}),
+		getByRole: (_role: string, _opts?: any) => ({
+			first: () => ({
+				isVisible: mock(async () => true),
+				innerText: mock(async () => ""),
+				click: mock(async () => {}),
+				fill: mock(async () => {}),
+			}),
+			count: mock(async () => 1),
+			click: mock(async () => {}),
+			fill: mock(async () => {}),
+		}),
+	} as any;
+}
+
+describe("handleFlow — no deps", () => {
+	test("returns internal error when deps is undefined", async () => {
+		const page = createMockFlowPage();
+		const result = await handleFlow(BASE_CONFIG, page, ["simple"]);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("Internal error");
+			expect(result.error).toContain("console and network buffers");
+		}
+	});
+});
+
+describe("handleFlow — running flows", () => {
+	test("runs a simple flow successfully", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(BASE_CONFIG, page, ["simple"], deps as any);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("simple");
+		}
+	});
+
+	test("returns JSON output with --reporter json", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			["simple", "--reporter", "json"],
+			deps as any,
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			const parsed = JSON.parse(result.data);
+			expect(parsed.name).toBe("simple");
+			expect(parsed.status).toBe("passed");
+			expect(parsed.steps).toHaveLength(1);
+		}
+	});
+
+	test("returns JUnit output with suite properties from --junit-property", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			[
+				"simple",
+				"--reporter",
+				"junit",
+				"--junit-property",
+				"environment=ci",
+				"--junit-property",
+				"browser=chrome",
+			],
+			deps as any,
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain(
+				'<property name="environment" value="ci"/>',
+			);
+			expect(result.data).toContain(
+				'<property name="browser" value="chrome"/>',
+			);
+		}
+	});
+
+	test("returns plugin reporter output with a registered custom reporter", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const reporters = new CustomReporterRegistry();
+		reporters.register({
+			name: "teamcity",
+			render: ({ flowName, results }) =>
+				`teamcity:${flowName}:${results.length}`,
+		});
+
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			["simple", "--reporter", "teamcity"],
+			deps as any,
+			undefined,
+			undefined,
+			reporters,
+		);
+
+		expect(result).toEqual({
+			ok: true,
+			data: "teamcity:simple:1",
+		});
+	});
+
+	test("returns Markdown output with --reporter markdown", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			["simple", "--reporter", "markdown"],
+			deps as any,
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("# Flow: simple");
+			expect(result.data).toContain("1 passed");
+		}
+	});
+
+	test("returns TAP output with --reporter tap", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			["simple", "--reporter", "tap"],
+			deps as any,
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("TAP version 13");
+			expect(result.data).toContain("1..1");
+		}
+	});
+
+	test("returns Allure output with --reporter allure", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			["simple", "--reporter", "allure"],
+			deps as any,
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			const parsed = JSON.parse(result.data);
+			expect(parsed.name).toBe("simple");
+			expect(parsed.status).toBe("passed");
+			expect(parsed.steps).toHaveLength(1);
+		}
+	});
+
+	test("returns HTML output with --reporter html", async () => {
+		const page = createMockFlowPage();
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			BASE_CONFIG,
+			page,
+			["simple", "--reporter", "html"],
+			deps as any,
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.data).toContain("<!doctype html>");
+			expect(result.data).toContain('id="flow-search"');
+		}
+	});
+
+	test("returns error report when a step fails", async () => {
+		// Use a flow with an assert step that will fail
+		const failConfig: CommandConfig = {
+			environments: BASE_CONFIG.environments,
+			flows: {
+				"check-banner": {
+					description: "Verify banner is visible",
+					steps: [{ assert: { visible: ".banner" } }],
+				},
+			},
+		};
+		// The mock page has no visible selectors, so visible assertion will fail
+		const page = createMockFlowPage();
+		page.locator = (_sel: string) => ({
+			first: () => ({
+				isVisible: mock(async () => false),
+				innerText: mock(async () => ""),
+			}),
+			count: mock(async () => 0),
+		});
+		const deps = createMockDeps();
+		const result = await handleFlow(
+			failConfig,
+			page,
+			["check-banner"],
+			deps as any,
+		);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.error).toContain("check-banner");
+		}
+	});
+});
