@@ -27,7 +27,7 @@ bunx opensrc <owner>/<repo>      # GitHub repo (e.g., bunx opensrc vercel/ai)
 
 ## Development
 
-- **Greenfield project:** boathook is unreleased. Maintain one current contract for CLI commands, configuration, plugin APIs and on-disk state. When a contract changes, update its callers, plugins, docs and tests together and remove the superseded path. Do not add aliases, migrations, dual reads or compatibility fallbacks for superseded contracts.
+- **Greenfield project:** Maintain one current contract for CLI commands, configuration, plugin APIs and on-disk state. When a contract changes, update its callers, plugins, docs and tests together and remove the superseded path. Do not add aliases, migrations, dual reads or compatibility fallbacks for superseded contracts.
 - **Bun-first:** Use the Bun version in `.bun-version` for the CLI, daemon, project-owned scripts, dependency installation, tests, lint and release builds. Use `bun install --frozen-lockfile` for dependencies, `bun test` for tests and `bun x --bun` for package binaries. The `--bun` flag also runs tools whose executable uses a Node shebang. Product development and installation must work without a separate Node.js or npm installation.
 - **Workspace dependencies:** Declare direct dependencies in the consuming package. Store third-party versions in the root `workspaces.catalog` and use `catalog:` in package manifests. Use `workspace:*` for local packages. Maintain a single root `bun.lock`.
 - Prefer Bun APIs when they simplify the implementation. Bun-compatible `node:*` standard library imports are fine for portability, file locking, atomic filesystem operations and existing integrations. Commands configured by users for their own projects may use their project's runtime.

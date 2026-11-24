@@ -162,14 +162,30 @@ jobs:
         run: |
           tag="v$RELEASE_VERSION"
           archive="boathook-linux-x64-$RELEASE_VERSION.tar.gz"
+          checksum="boathook-linux-x64.sha256"
+          (cd dist && sha256sum "$archive" > "$checksum")
           release=$(mktemp)
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets > "$release"; then
-            if ! jq -e --arg archive "$archive" 'any(.assets[]; .name == $archive and .state == "uploaded")' "$release" > /dev/null; then
+            archive_digest=$(jq -r --arg name "$archive" '.assets[] | select(.name == $name and .state == "uploaded") | .digest // empty' "$release")
+            if [[ -n $archive_digest ]]; then
+              [[ $archive_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+              printf '%s  %s\n' "${archive_digest#sha256:}" "$archive" > "dist/$checksum"
+            else
               gh release upload "$tag" "dist/$archive" --repo "$GITHUB_REPOSITORY"
+            fi
+            checksum_digest=$(jq -r --arg name "$checksum" '.assets[] | select(.name == $name and .state == "uploaded") | .digest // empty' "$release")
+            if [[ -z $checksum_digest ]]; then
+              gh release upload "$tag" "dist/$checksum" --repo "$GITHUB_REPOSITORY"
+            else
+              read -r expected _ < <(sha256sum "dist/$checksum")
+              if [[ $checksum_digest != "sha256:$expected" ]]; then
+                echo 'The published checksum file does not match the CLI archive.' >&2
+                exit 1
+              fi
             fi
             if jq -e '.isDraft' "$release" > /dev/null; then
               gh release edit "$tag" --draft=false --repo "$GITHUB_REPOSITORY"
             fi
           else
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "dist/$archive"
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "dist/$archive" "dist/$checksum"
           fi

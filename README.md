@@ -6,10 +6,10 @@ boathook runs named Chrome sessions for people and agents. Each session keeps it
 
 ## Install and open a session
 
-On Linux x86-64, run this command with the GitHub CLI signed in to an account with access to this repository.
+Install the latest stable release on Linux x86-64.
 
 ```bash
-bash -o pipefail -c 'gh api -H "Accept: application/vnd.github.raw+json" repos/Mobiwuhu/boathook/contents/install.sh | bash -s -- --latest'
+bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/Mobiwuhu/boathook/main/install.sh | bash -s -- --latest'
 ```
 
 The installer puts `boathook` in `~/.local/bin` and prepares the Bun and Chrome for Testing versions pinned in the release. Running the command again reuses the installed files for the same version. To install from a downloaded archive, unpack it and run `bash install.sh`.
