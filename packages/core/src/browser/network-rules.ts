@@ -23,6 +23,7 @@ export async function loadNetworkExtension(
 	const browser = context.browser();
 	if (!browser) throw new Error("Chrome 调试会话不可用。");
 	const cdp = await browser.newBrowserCDPSession();
+	const previousWorkers = new Set(context.serviceWorkers());
 	let id: string;
 	try {
 		({ id } = await cdp.send("Extensions.loadUnpacked", { path: directory }));
@@ -30,10 +31,14 @@ export async function loadNetworkExtension(
 		await cdp.detach().catch(() => {});
 	}
 	const workerUrl = `chrome-extension://${id}/worker.js`;
+	// Reloading a persisted extension can return before its old worker detaches.
+	function isLoadedWorker(worker: Worker): boolean {
+		return worker.url() === workerUrl && !previousWorkers.has(worker);
+	}
 	const worker =
-		context.serviceWorkers().find((worker) => worker.url() === workerUrl) ??
+		context.serviceWorkers().find(isLoadedWorker) ??
 		(await context.waitForEvent("serviceworker", {
-			predicate: (worker) => worker.url() === workerUrl,
+			predicate: isLoadedWorker,
 			timeout: 5000,
 		}));
 	return new NetworkRuleStore(worker);
