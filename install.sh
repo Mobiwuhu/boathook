@@ -2,15 +2,21 @@
 set -euo pipefail
 umask 077
 
-case "$(uname -s):$(uname -m)" in
+machine=$(uname -m)
+installer_command=(bash)
+case "$(uname -s):$machine" in
   Linux:x86_64)
     platform=linux-x64
     checksum_command=(sha256sum)
     lock_command=(flock -x)
     ;;
   Darwin:arm64|Darwin:x86_64)
-    platform=darwin-$(uname -m)
-    if [[ $platform == darwin-x86_64 ]]; then platform=darwin-x64; fi
+    platform=darwin-x64
+    # A shell running under Rosetta reports x86_64 on Apple Silicon.
+    if [[ $machine == arm64 || $(/usr/sbin/sysctl -n hw.optional.arm64 2>/dev/null) == 1 ]]; then
+      platform=darwin-arm64
+      installer_command=(/usr/bin/arch -arm64 /bin/bash)
+    fi
     checksum_command=(shasum -a 256)
     lock_command=(lockf)
     ;;
@@ -46,7 +52,7 @@ install_latest_release() (
     fail '发行包的 SHA-256 校验失败，请重新下载。'
   fi
   tar -xzf "$download_dir/$archive" -C "$download_dir"
-  bash "$download_dir/boathook-$platform/install.sh"
+  "${installer_command[@]}" "$download_dir/boathook-$platform/install.sh"
 )
 
 if [[ ${1-} == --latest ]]; then
