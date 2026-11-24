@@ -2,6 +2,43 @@
 set -euo pipefail
 umask 077
 
+install_latest_release() (
+  fail() { printf '%s\n' "$1" >&2; exit 1; }
+
+  [[ $# -eq 0 ]] || fail '用法为 bash install.sh --latest。'
+  [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || fail '这个发行包适用于 Linux x86_64。'
+  for tool in gh tar sha256sum; do
+    command -v "$tool" >/dev/null || fail "请安装 $tool 后重试。"
+  done
+
+  repo=Mobiwuhu/boathook
+  release_info=$(gh api "repos/$repo/releases/latest" --jq '
+    .tag_name as $tag
+    | .assets[]
+    | select(.name == ("boathook-linux-x64-" + ($tag | ltrimstr("v")) + ".tar.gz") and .state == "uploaded")
+    | [$tag, .digest] | @tsv
+  ')
+  read -r tag digest <<< "$release_info"
+  [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && $digest =~ ^sha256:[0-9a-f]{64}$ ]] || fail '最新发行版缺少 Linux x86-64 安装包或 SHA-256 校验值。'
+
+  archive="boathook-linux-x64-${tag#v}.tar.gz"
+  download_dir=$(mktemp -d)
+  trap 'rm -rf -- "$download_dir"' EXIT
+  gh release download "$tag" --repo "$repo" --pattern "$archive" --dir "$download_dir"
+  if ! (cd -- "$download_dir" &&
+    printf '%s  %s\n' "${digest#sha256:}" "$archive" | sha256sum --check --status); then
+    fail '发行包的 SHA-256 校验失败，请重新下载。'
+  fi
+  tar -xzf "$download_dir/$archive" -C "$download_dir"
+  bash "$download_dir/boathook-linux-x64/install.sh"
+)
+
+if [[ ${1-} == --latest ]]; then
+  shift
+  install_latest_release "$@"
+  exit 0
+fi
+
 package_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 source "$package_dir/scripts/install-entry.sh"
 

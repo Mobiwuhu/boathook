@@ -6,7 +6,13 @@ boathook 是面向开发者和 Agent 的 Chrome 自动化命令行工具。每�
 
 ## 安装并启动会话
 
-在 Linux x86-64 上，解压发行包并运行 `bash install.sh`。脚本使用包里的 CLI 和 Bun，并准备发行清单锁定的 Chrome for Testing。用 `bash install.sh --dry-run` 预览安装路径。
+在 Linux x86-64 上，用有仓库访问权限的账号登录 GitHub CLI 后，运行下面一条命令。
+
+```bash
+bash -o pipefail -c 'gh api -H "Accept: application/vnd.github.raw+json" repos/Mobiwuhu/boathook/contents/install.sh | bash -s -- --latest'
+```
+
+安装器把 `boathook` 放到 `~/.local/bin`，并准备发行版锁定的 Bun 和 Chrome for Testing。重复运行会复用已经安装的同版本文件。如果已经下载发行包，解压后运行 `bash install.sh`。
 
 从源码安装时，请使用 `.bun-version` 指定的 Bun 版本，然后在仓库中运行 `bash setup.sh`。如果想用已安装的 Chrome，在运行 `setup.sh` 前把 `BOATHOOK_CHROME_EXECUTABLE` 设为它的可执行文件路径。也可以用已安装的 Chrome 在仓库中编译并检查可执行文件。
 
