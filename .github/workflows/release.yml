@@ -96,8 +96,11 @@ jobs:
       - name: Install and test the release artifacts
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          BOATHOOK_SMOKE_NPM_DIR: dist/npm
-        run: bun run test:release "dist/boathook-$RELEASE_PLATFORM-$RELEASE_VERSION"*.tar.gz
+        run: |
+          if [[ "$RELEASE_PLATFORM" == linux-x64 ]]; then
+            export BOATHOOK_SMOKE_NPM_DIR=dist/npm
+          fi
+          bun run test:release "dist/boathook-$RELEASE_PLATFORM-$RELEASE_VERSION"*.tar.gz
       - name: Save the version changes
         if: runner.os == 'Linux'
         run: git diff --binary HEAD > dist/release.patch
