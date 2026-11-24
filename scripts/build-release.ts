@@ -1,12 +1,7 @@
 import { chmod, copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { importProductPlugin } from "@boathook/core";
-import {
-	githubRepository,
-	releaseArchiveName,
-	releaseDirectoryName,
-	releasePlatform,
-} from "../apps/cli/src/release.ts";
+import { githubRepository } from "../apps/cli/src/release.ts";
 import { writeBundleLicenses } from "./release-licenses.ts";
 import {
 	npmArchiveName,
@@ -23,10 +18,32 @@ if (repository && !githubRepository.test(repository)) {
 	throw new Error("请为发行包指定有效的 GitHub OWNER/REPO。");
 }
 const chromeVersion = "153.0.8010.12";
+const chromeBuilds = {
+	"linux-x64": {
+		platform: "linux64",
+		sha256: "8aac35011c18f6e2d10696154af89a5728ac2ddd6dc6fad24ffdf243c3fcfd5a",
+	},
+	"darwin-arm64": {
+		platform: "mac-arm64",
+		sha256: "930e2a2c15addbaca1fe9b07bfa520667bced556d7988707186819cb4279ef3b",
+	},
+	"darwin-x64": {
+		platform: "mac-x64",
+		sha256: "4e12e2b8a297a2eb79c16258e46961c73f8aa2fa6be6b1d3cdbb553fb5d4ef1c",
+	},
+};
+const releasePlatform = `${process.platform}-${process.arch}`;
+const releaseDirectoryName = `boathook-${releasePlatform}`;
+const chromeBuild = chromeBuilds[releasePlatform as keyof typeof chromeBuilds];
+if (!chromeBuild) {
+	throw new Error(`此平台暂不提供 boathook 发行包：${releasePlatform}。`);
+}
+const chromeDirectory = `chrome-${chromeBuild.platform}`;
 const chrome = {
 	version: chromeVersion,
-	url: `https://storage.googleapis.com/chrome-for-testing-public/${chromeVersion}/linux64/chrome-linux64.zip`,
-	sha256: "8aac35011c18f6e2d10696154af89a5728ac2ddd6dc6fad24ffdf243c3fcfd5a",
+	url: `https://storage.googleapis.com/chrome-for-testing-public/${chromeVersion}/${chromeBuild.platform}/${chromeDirectory}.zip`,
+	sha256: chromeBuild.sha256,
+	directory: chromeDirectory,
 };
 const executables = ["bin/boathook", "bin/bun", "install.sh"];
 type PackagedPlugin = { id: string; version: string; file: string };
@@ -145,14 +162,15 @@ async function writeArchive(
 		join(directory, "checksums.txt"),
 		[...checksums, ""].join("\n"),
 	);
-	const archive = join(output, releaseArchiveName(version, plugins.length > 0));
+	const suffix = plugins.length > 0 ? "-with-plugins" : "";
+	const archive = join(
+		output,
+		`${releaseDirectoryName}-${version}${suffix}.tar.gz`,
+	);
 	await run(["tar", "-czf", archive, "-C", scratch, releaseDirectoryName]);
 	console.log(archive);
 }
 
-if (process.platform !== "linux" || process.arch !== "x64") {
-	throw new Error("请在 Linux x86_64 上构建当前发行包。");
-}
 const bunVersion = (await Bun.file(join(repo, ".bun-version")).text()).trim();
 if (Bun.version !== bunVersion)
 	throw new Error(`请使用 Bun ${bunVersion} 构建发行包。`);
@@ -167,6 +185,9 @@ const scratch = await mkdtemp(join(output, ".release-"));
 try {
 	const metafile = join(scratch, "cli-build.json");
 	await run([process.execPath, "run", "build", `--metafile=${metafile}`]);
+	const binary = join(output, "boathook");
+	if (process.platform === "darwin")
+		await run(["codesign", "-s", "-", "-f", binary]);
 	const directory = join(scratch, releaseDirectoryName);
 	const licenses = join(directory, "licenses");
 	await mkdir(join(directory, "bin"), { recursive: true });
@@ -176,7 +197,7 @@ try {
 		metafile,
 	});
 	await Promise.all([
-		copyFile(join(output, "boathook"), join(directory, "bin/boathook")),
+		copyFile(binary, join(directory, "bin/boathook")),
 		copyFile(process.execPath, join(directory, "bin/bun")),
 		copyFile(join(repo, "install.sh"), join(directory, "install.sh")),
 		copyFile(

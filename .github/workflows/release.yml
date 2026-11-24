@@ -33,9 +33,20 @@ permissions:
 
 jobs:
   build:
-    name: Build and verify a release
-    runs-on: ubuntu-24.04
+    name: Build and verify ${{ matrix.platform }}
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux-x64
+          - runner: macos-15
+            platform: darwin-arm64
+          - runner: macos-15-intel
+            platform: darwin-x64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
+    env:
+      RELEASE_PLATFORM: ${{ matrix.platform }}
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -71,28 +82,33 @@ jobs:
         env:
           WITH_PLUGINS: ${{ inputs.with_plugins }}
         run: |
-          args=(--npm-packages)
+          args=()
+          if [[ "$RELEASE_PLATFORM" == linux-x64 ]]; then
+            args+=(--npm-packages)
+          fi
           if [[ "$WITH_PLUGINS" == true ]]; then
             args+=(--with-plugins)
           fi
           bun run release "${args[@]}"
       - name: Prepare Chrome system libraries
+        if: runner.os == 'Linux'
         run: bun ./node_modules/playwright/cli.js install-deps chromium
       - name: Install and test the release artifacts
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           BOATHOOK_SMOKE_NPM_DIR: dist/npm
-        run: bun run test:release "dist/boathook-linux-x64-$RELEASE_VERSION"*.tar.gz
+        run: bun run test:release "dist/boathook-$RELEASE_PLATFORM-$RELEASE_VERSION"*.tar.gz
       - name: Save the version changes
+        if: runner.os == 'Linux'
         run: git diff --binary HEAD > dist/release.patch
       - uses: actions/upload-artifact@v4
         with:
-          name: boathook-release
+          name: boathook-release-${{ matrix.platform }}
           if-no-files-found: error
           overwrite: true
           compression-level: 0
           path: |
-            dist/boathook-linux-x64-${{ steps.version.outputs.version }}*.tar.gz
+            dist/boathook-${{ matrix.platform }}-${{ steps.version.outputs.version }}*.tar.gz
             dist/npm/*.tgz
             dist/release.patch
 
@@ -116,7 +132,8 @@ jobs:
           bun-version-file: .bun-version
       - uses: actions/download-artifact@v4
         with:
-          name: boathook-release
+          pattern: boathook-release-*
+          merge-multiple: true
           path: dist
       - name: Check npm configuration and package versions
         env:
@@ -161,31 +178,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="v$RELEASE_VERSION"
-          archive="boathook-linux-x64-$RELEASE_VERSION.tar.gz"
-          checksum="boathook-linux-x64.sha256"
-          (cd dist && sha256sum "$archive" > "$checksum")
           release=$(mktemp)
+          existing=false
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets > "$release"; then
-            archive_digest=$(jq -r --arg name "$archive" '.assets[] | select(.name == $name and .state == "uploaded") | .digest // empty' "$release")
+            existing=true
+          else
+            printf '%s\n' '{"isDraft":false,"assets":[]}' > "$release"
+          fi
+          asset_digest() {
+            jq -r --arg name "$1" '.assets[] | select(.name == $name and .state == "uploaded") | .digest // empty' "$release"
+          }
+          files=()
+          for platform in linux-x64 darwin-arm64 darwin-x64; do
+            archive="boathook-$platform-$RELEASE_VERSION.tar.gz"
+            checksum="boathook-$platform.sha256"
+            archive_digest=$(asset_digest "$archive")
             if [[ -n $archive_digest ]]; then
               [[ $archive_digest =~ ^sha256:[0-9a-f]{64}$ ]]
               printf '%s  %s\n' "${archive_digest#sha256:}" "$archive" > "dist/$checksum"
             else
-              gh release upload "$tag" "dist/$archive" --repo "$GITHUB_REPOSITORY"
+              (cd dist && sha256sum "$archive" > "$checksum")
+              files+=("dist/$archive")
             fi
-            checksum_digest=$(jq -r --arg name "$checksum" '.assets[] | select(.name == $name and .state == "uploaded") | .digest // empty' "$release")
+            checksum_digest=$(asset_digest "$checksum")
             if [[ -z $checksum_digest ]]; then
-              gh release upload "$tag" "dist/$checksum" --repo "$GITHUB_REPOSITORY"
+              files+=("dist/$checksum")
             else
               read -r expected _ < <(sha256sum "dist/$checksum")
               if [[ $checksum_digest != "sha256:$expected" ]]; then
-                echo 'The published checksum file does not match the CLI archive.' >&2
+                printf 'The published checksum file %s does not match %s.\n' "$checksum" "$archive" >&2
                 exit 1
               fi
             fi
+          done
+          if [[ $existing == true ]]; then
+            for file in "${files[@]}"; do
+              gh release upload "$tag" "$file" --repo "$GITHUB_REPOSITORY"
+            done
             if jq -e '.isDraft' "$release" > /dev/null; then
               gh release edit "$tag" --draft=false --repo "$GITHUB_REPOSITORY"
             fi
           else
-            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "dist/$archive" "dist/$checksum"
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "${files[@]}"
           fi

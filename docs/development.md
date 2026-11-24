@@ -15,21 +15,21 @@ bun run test:network
 
 `bun run check` runs Biome, checks package boundaries, and checks the plugin SDK types. The build writes `dist/boathook`. The browser tests use temporary state directories and loopback servers. The network suite also needs OpenSSL. Set `BOATHOOK_CHROME_EXECUTABLE` if Chrome is outside the default location. Set `BOATHOOK_SMOKE_BINARY` to exercise a compiled executable moved outside the checkout.
 
-Run `bash setup.sh` from a checkout to build the current source and install the command. On Linux x86-64, run `bash install.sh` from an unpacked release to verify its files and install the bundled CLI and Bun with the matching Chrome. Both use `~/.local/bin` by default and accept `BOATHOOK_BIN_DIR` and `BOATHOOK_STATE_DIR`.
+Run `bash setup.sh` from a checkout to build the current source and install the command. On Linux x86-64 and macOS (Apple Silicon or Intel), run `bash install.sh` from the matching unpacked release to verify its files and install the bundled CLI and Bun with Chrome. Both use `~/.local/bin` by default and accept `BOATHOOK_BIN_DIR` and `BOATHOOK_STATE_DIR`.
 
 Run `bun run build:docker` to build an optional image with the compiled CLI and Chrome. It uses the Bun version in `.bun-version`.
 
-`bun install --frozen-lockfile` installs from the root lockfile. On Linux x86-64, `bun run release --with-plugins` produces an archive that includes the optional headers plugin. Install separately maintained plugins with `boathook plugin install`.
+`bun install --frozen-lockfile` installs from the root lockfile. Run `bun run release --with-plugins` on the target platform to produce an archive with the optional headers plugin. Install separately maintained plugins with `boathook plugin install`.
 
 Declare each direct dependency in the workspace that uses it. Set external dependency versions in root `package.json` under `workspaces.catalog` and reference them with `catalog:`. Reference packages from this repository with `workspace:*`. Update the root `bun.lock` when a dependency changes.
 
-On Linux x86-64, run `bun run test:release dist/boathook-linux-x64-*.tar.gz` after packaging. This installs each archive, runs `doctor`, and opens a session with the bundled plugins. Set `BOATHOOK_CHROME_ARCHIVE` to reuse a local Chrome ZIP with the checksum in the release manifest.
+After packaging, pass the native archive to `bun run test:release`. This installs each archive twice, checks reuse, runs `doctor`, and opens a session with the bundled plugins. Set `BOATHOOK_CHROME_ARCHIVE` to reuse a local Chrome ZIP with the checksum in the release manifest.
 
 ## Publish and verify upgrades
 
 Open **Actions → Release boathook → Run workflow**. Choose `initial` to use the current version for the first release. Choose `patch`, `minor`, or `major` to let Bun calculate the next version. The workflow applies that version to the CLI, `@boathook/plugin-sdk`, and `@boathook/headers`, then builds and installs the three artifacts for verification.
 
-**Dry run** is enabled by default. The `boathook-release` Actions artifact contains the Linux x86-64 archive and two npm tarballs. To publish from `main`, set the repository's `NPM_TOKEN` Actions secret to an npm token with publish access to both scoped packages and disable **Dry run**. The workflow pushes the verified version commit and tag, publishes the npm packages, and attaches the standard CLI archive and `boathook-linux-x64.sha256` to GitHub Releases. The one-command installer uses this checksum file to select and verify the archive. The repository must allow the workflow to push the release commit to `main`.
+**Dry run** is enabled by default. Each platform uploads a `boathook-release-PLATFORM` Actions artifact. The Linux artifact also contains the two npm tarballs. To publish from `main`, set the repository's `NPM_TOKEN` Actions secret to an npm token with publish access to both scoped packages and disable **Dry run**. The workflow pushes the verified version commit and tag, publishes the npm packages, and attaches each standard CLI archive with a `boathook-PLATFORM.sha256` file. The one-command installer uses the matching checksum file to select and verify the archive. The repository must allow the workflow to push the release commit to `main`.
 
 An existing `vMAJOR.MINOR.PATCH` tag can also trigger the same workflow when pushed. The tag must match all three package versions. After a partial publish failure, use **Re-run failed jobs** on the existing run to reuse the verified artifacts. The publisher checks the integrity of any existing npm version before skipping it.
 

@@ -6,7 +6,7 @@ boathook 是面向开发者和 Agent 的 Chrome 自动化命令行工具。每�
 
 ## 安装并启动会话
 
-在 Linux x86-64 上运行下面一条命令，安装最新稳定版。
+在 Linux x86-64 或 Mac（Apple Silicon 和 Intel）上运行下面一条命令，安装最新稳定版。
 
 ```bash
 bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/Mobiwuhu/boathook/main/install.sh | bash -s -- --latest'
@@ -43,7 +43,7 @@ boathook upgrade --check
 boathook upgrade
 ```
 
-Linux x86-64 发行包会记录来源 GitHub 仓库。升级命令检查最新稳定版本并校验下载的发行包。安装脚本检查 Chrome 后，将命令入口切换到新版本。重启会话即可用新版本和原来保存的浏览器资料继续工作。
+Linux x86-64 发行包会记录来源 GitHub 仓库。升级命令检查最新稳定版本并校验下载的发行包。安装脚本检查 Chrome 后，将命令入口切换到新版本。在 Mac 上重新执行一键安装命令即可安装最新稳定版。重启会话即可用新版本和原来保存的浏览器资料继续工作。
 
 用 `boathook upgrade --repo OWNER/REPO` 指定发行仓库，或者用 `boathook upgrade --archive ./boathook-linux-x64-0.2.0.tar.gz` 从本地发行包升级。用 `boathook --json upgrade --check` 查询已安装版本和可用版本。
 

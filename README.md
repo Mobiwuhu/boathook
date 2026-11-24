@@ -6,7 +6,7 @@ boathook runs named Chrome sessions for people and agents. Each session keeps it
 
 ## Install and open a session
 
-Install the latest stable release on Linux x86-64.
+Install the latest stable release on Linux x86-64 or macOS (Apple Silicon and Intel).
 
 ```bash
 bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/Mobiwuhu/boathook/main/install.sh | bash -s -- --latest'
@@ -43,7 +43,7 @@ boathook upgrade --check
 boathook upgrade
 ```
 
-On Linux x86-64, the installed release records its GitHub repository. The command checks the latest stable release, verifies the downloaded archive, and switches the command to the new release after the installer checks Chrome. Restart a session to use the new release with its saved profile.
+On Linux x86-64, the installed release records its GitHub repository. The command checks the latest stable release, verifies the downloaded archive, and switches the command to the new release after the installer checks Chrome. On macOS, run the one-command installer again to install the latest stable release. Restart a session to use the new release with its saved profile.
 
 Use `boathook upgrade --repo OWNER/REPO` to specify the source repository, or `boathook upgrade --archive ./boathook-linux-x64-0.2.0.tar.gz` to upgrade from a local release. Run `boathook --json upgrade --check` to report the installed and available versions without installing.
 
