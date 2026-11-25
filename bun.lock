@@ -19,7 +19,7 @@
     },
     "apps/cli": {
       "name": "@boathook/cli",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "@boathook/core": "workspace:*",
         "@boathook/plugin-sdk": "workspace:*",
@@ -46,7 +46,7 @@
     },
     "packages/headers": {
       "name": "@boathook/headers",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "devDependencies": {
         "@boathook/plugin-sdk": "workspace:*",
         "@eslint-community/regexpp": "catalog:",
@@ -55,7 +55,7 @@
     },
     "packages/plugin-sdk": {
       "name": "@boathook/plugin-sdk",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "dependencies": {
         "chrome-types": "catalog:",
         "incur": "catalog:",
