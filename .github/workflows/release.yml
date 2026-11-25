@@ -121,8 +121,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: npm
     permissions:
       contents: write
+      id-token: write
     env:
       RELEASE_VERSION: ${{ needs.build.outputs.version }}
     steps:
@@ -133,20 +135,17 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
       - uses: actions/download-artifact@v4
         with:
           pattern: boathook-release-*
           merge-multiple: true
           path: dist
-      - name: Check npm configuration and package versions
-        env:
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [[ -z "$NPM_CONFIG_TOKEN" ]]; then
-            echo 'Set the NPM_TOKEN Actions secret to publish the public packages.' >&2
-            exit 1
-          fi
-          bun scripts/publish-release-packages.ts dist/npm "$RELEASE_VERSION" --check
+      - name: Check the verified npm tarballs
+        run: bun scripts/publish-release-packages.ts dist/npm "$RELEASE_VERSION" --check
       - name: Commit and tag the verified version
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -172,9 +171,7 @@ jobs:
             git tag "$tag"
             git push --atomic origin HEAD:refs/heads/main "refs/tags/$tag"
           fi
-      - name: Publish the verified npm tarballs
-        env:
-          NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish the verified npm tarballs with OIDC
         run: bun scripts/publish-release-packages.ts dist/npm "$RELEASE_VERSION"
       - name: Publish the GitHub release
         env:

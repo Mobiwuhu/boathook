@@ -52,7 +52,7 @@ export async function publishReleasePackages(
 		}
 		const child = Bun.spawn(
 			[
-				process.execPath,
+				"npm",
 				"publish",
 				file,
 				"--access",
