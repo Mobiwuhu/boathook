@@ -27,13 +27,15 @@ After packaging, pass the native archive to `bun run test:release`. This install
 
 ## Publish and verify upgrades
 
-Open **Actions → Release boathook → Run workflow**. Choose `initial` to use the current version for the first release. Choose `patch`, `minor`, or `major` to let Bun calculate the next version. The workflow applies that version to the CLI, `@boathook/plugin-sdk`, and `@boathook/headers`, then builds and installs the three artifacts for verification.
+Merge changes into `main` through a PR with all four CI checks passing. After the merge, CI runs on the new `main` commit. A successful run starts **Release boathook** for that commit if it is still the tip of `main` when the release is triggered. The automatic workflow increments the patch version from the latest release tag or from the source version if it is newer. Bun applies the same version to the CLI, `@boathook/plugin-sdk`, and `@boathook/headers`.
 
-**Dry run** is enabled by default. Each platform uploads a `boathook-release-PLATFORM` Actions artifact. The Linux artifact also contains the two npm tarballs. To publish from `main`, disable **Dry run**. The workflow pushes the verified version commit and tag, publishes the npm packages, and attaches each standard CLI archive with a `boathook-PLATFORM.sha256` file. The one-command installer uses the matching checksum file to select and verify the archive. The repository must allow the workflow to push the release commit to `main`.
+To choose a version increment manually, open **Actions → Release boathook → Run workflow**. Select `initial` for the first release or choose `patch`, `minor`, or `major`. **Dry run** is enabled by default. For a public release, select `main` at a commit with successful CI and disable **Dry run**.
+
+Each platform builds and verifies its archive, then uploads a `boathook-release-PLATFORM` Actions artifact. The Linux artifact also contains the two npm tarballs. The workflow records the version commit in the Git tag, publishes the npm packages, and attaches each standard CLI archive with a `boathook-PLATFORM.sha256` file. The one-command installer uses the matching checksum file to select and verify the archive.
 
 The publish job uses npm Trusted Publishing. Both npm packages authorize `Mobiwuhu/boathook`, workflow `release.yml`, environment `npm`, with permission to run `npm publish`. The job uses npm with OpenID Connect (OIDC) to upload the tarballs verified by the build. npm requires the first successful publish within two days of creating each trusted publisher. [Trusted publishing](https://docs.npmjs.com/trusted-publishers/)
 
-An existing `vMAJOR.MINOR.PATCH` tag can also trigger the same workflow when pushed. The tag must match all three package versions. After a partial publish failure, use **Re-run failed jobs** on the existing run to reuse the verified artifacts. The publisher checks the integrity of any existing npm version before skipping it.
+A pushed `vMAJOR.MINOR.PATCH` tag can also trigger a release from a commit that passed CI on `main`. The tag must match all three package versions. After a partial publish failure, use **Re-run failed jobs** on the existing run to reuse the verified artifacts. The publisher checks the integrity of any existing npm version before skipping it.
 
 On Linux x86-64, reproduce the release build and installation checks locally.
 

@@ -3,6 +3,10 @@ name: Release boathook
 on:
   push:
     tags: ['v*']
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
   workflow_dispatch:
     inputs:
       release_type:
@@ -25,15 +29,84 @@ on:
         default: false
 
 concurrency:
-  group: release
+  group: >-
+    ${{ ((github.event_name == 'workflow_dispatch' && inputs.dry_run) ||
+         (github.event_name == 'workflow_run' &&
+          (github.event.workflow_run.event != 'push' ||
+           github.event.workflow_run.conclusion != 'success' ||
+           github.event.workflow_run.head_sha != github.sha))) &&
+        format('release-{0}', github.run_id) || 'release' }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Select the tested release source
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_sha == github.sha)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      release_enabled: ${{ steps.select.outputs.release_enabled }}
+      release_type: ${{ steps.select.outputs.release_type }}
+      base_version: ${{ steps.select.outputs.base_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check CI and select the version base
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          RELEASE_TYPE: ${{ github.event_name == 'workflow_run' && 'patch' || inputs.release_type || 'initial' }}
+        run: |
+          source_commit=$(git rev-parse HEAD)
+          if [[ "$DRY_RUN" != true ]]; then
+            if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" != refs/heads/main ]]; then
+              echo 'Run the publish workflow from main.' >&2
+              exit 1
+            fi
+            git merge-base --is-ancestor "$source_commit" origin/main
+            if [[ "$GITHUB_EVENT_NAME" != workflow_run ]]; then
+              ci=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --event push \
+                --branch main --commit "$source_commit" --status success --limit 1 \
+                --json databaseId --jq '.[0].databaseId // empty')
+              if [[ -z "$ci" ]]; then
+                echo 'The release commit needs a successful CI run on main.' >&2
+                exit 1
+              fi
+            fi
+          fi
+
+          latest_tag=
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              latest_tag="$tag"
+              break
+            fi
+          done < <(git tag --list 'v[0-9]*' --sort=-version:refname)
+          if [[ "$GITHUB_EVENT_NAME" == workflow_run && -n "$latest_tag" ]] &&
+            git merge-base --is-ancestor "$source_commit" "$latest_tag"; then
+            echo "This commit is already included in $latest_tag."
+            exit 0
+          fi
+          printf 'base_version=%s\nrelease_type=%s\nrelease_enabled=true\n' \
+            "${latest_tag#v}" "$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build and verify ${{ matrix.platform }}
+    needs: plan
+    if: ${{ needs.plan.outputs.release_enabled == 'true' }}
     strategy:
       matrix:
         include:
@@ -50,11 +123,6 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Require main for publishing
-        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.dry_run && github.ref != 'refs/heads/main' }}
-        run: |
-          echo 'Run the publish workflow from main.' >&2
-          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -65,8 +133,9 @@ jobs:
       - name: Prepare the shared version
         id: version
         env:
-          RELEASE_TYPE: ${{ inputs.release_type || 'initial' }}
-        run: bun scripts/prepare-release.ts "$RELEASE_TYPE"
+          RELEASE_TYPE: ${{ needs.plan.outputs.release_type }}
+          BASE_VERSION: ${{ needs.plan.outputs.base_version }}
+        run: bun scripts/prepare-release.ts "$RELEASE_TYPE" "$BASE_VERSION"
       - name: Check release tag
         if: github.event_name == 'push'
         env:
@@ -117,7 +186,7 @@ jobs:
 
   publish:
     name: Publish to GitHub Releases and npm
-    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.dry_run }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -147,29 +216,26 @@ jobs:
       - name: Check the verified npm tarballs
         run: bun scripts/publish-release-packages.ts dist/npm "$RELEASE_VERSION" --check
       - name: Commit and tag the verified version
-        if: github.event_name == 'workflow_dispatch'
         run: |
           tag="v$RELEASE_VERSION"
+          source_commit=$(git rev-parse HEAD)
           git fetch --tags origin main
+          git merge-base --is-ancestor "$source_commit" origin/main
           test -f dist/release.patch
           if [[ -s dist/release.patch ]]; then
             git apply --index dist/release.patch
           fi
           if git show-ref --verify --quiet "refs/tags/$tag"; then
             test "$(git rev-parse "$tag^{tree}")" = "$(git write-tree)"
-            git merge-base --is-ancestor "$tag" origin/main
+            git merge-base --is-ancestor "$source_commit" "$tag"
           else
-            if [[ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]]; then
-              echo 'main advanced during the build. Start a new release from main.' >&2
-              exit 1
-            fi
             if ! git diff --cached --quiet; then
               git config user.name 'github-actions[bot]'
               git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
               git commit -m "chore: release $tag"
             fi
             git tag "$tag"
-            git push --atomic origin HEAD:refs/heads/main "refs/tags/$tag"
+            git push origin "refs/tags/$tag"
           fi
       - name: Publish the verified npm tarballs with OIDC
         run: bun scripts/publish-release-packages.ts dist/npm "$RELEASE_VERSION"
