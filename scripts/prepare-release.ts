@@ -1,16 +1,18 @@
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
+import { releaseVersion } from "../apps/cli/src/release.ts";
 import { readReleaseVersion, releaseManifests } from "./release-packages.ts";
 
 const repo = join(import.meta.dir, "..");
-const [type] = process.argv.slice(2);
+const [type, versionBase, ...extra] = process.argv.slice(2);
 if (
-	process.argv.length !== 3 ||
+	extra.length ||
 	!type ||
-	!["initial", "patch", "minor", "major"].includes(type)
+	!["initial", "patch", "minor", "major"].includes(type) ||
+	(versionBase && !releaseVersion.test(versionBase))
 )
 	throw new Error(
-		"Usage: bun scripts/prepare-release.ts initial|patch|minor|major",
+		"Usage: bun scripts/prepare-release.ts initial|patch|minor|major [BASE_VERSION]",
 	);
 
 async function run(args: string[], cwd: string): Promise<void> {
@@ -23,12 +25,13 @@ async function run(args: string[], cwd: string): Promise<void> {
 		throw new Error(`bun ${args.join(" ")} failed.`);
 }
 
-await readReleaseVersion(repo);
+const current = await readReleaseVersion(repo);
 if (type !== "initial") {
-	await run(
-		["pm", "version", type, "--no-git-tag-version"],
-		join(repo, "apps/cli"),
-	);
+	const cli = join(repo, "apps/cli");
+	if (versionBase && Bun.semver.order(versionBase, current) > 0) {
+		await run(["pm", "version", versionBase, "--no-git-tag-version"], cli);
+	}
+	await run(["pm", "version", type, "--no-git-tag-version"], cli);
 	const [cliManifest, ...pluginManifests] = releaseManifests;
 	const { version } = await Bun.file(join(repo, cliManifest)).json();
 	for (const manifest of pluginManifests) {
