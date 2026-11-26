@@ -12,6 +12,7 @@ Use `--config-json -` to read the JSON from standard input. A session can also b
 ## Plugins
 
 An installed plugin can be selected by ID in the starting JSON.
+When a requested plugin is missing or its entry cannot be resolved, boathook warns on stderr and continues with the plugins it finds. After installing a skipped plugin, resubmit the startup JSON with `restart NAME --config-json JSON` to load it.
 
 ~~~bash
 boathook start qa --config-json '{"plugins":[{"id":"headers"}]}'
@@ -23,7 +24,7 @@ A plugin configuration command validates and applies the new options to the acti
 
 Use `config inspect --plugin ID` to read the saved settings for one enabled plugin, including when the session is stopped. For a running session, the result includes the Unix socket path. The usual socket location is `run/<id>/daemon.sock` under the state directory.
 
-To change Chrome launch settings or the plugins loaded by a session, submit the complete configuration to `restart NAME --config-json JSON`. The candidate validates plugin options before stopping the current browser. If startup fails after shutdown, the supervisor attempts to restore the previous session and reports the outcome.
+To change Chrome launch settings or the plugins loaded by a session, submit the complete configuration to `restart NAME --config-json JSON`. The candidate validates the options of the plugins it finds before stopping the current browser. If startup fails after shutdown, the supervisor attempts to restore the previous session and reports the outcome.
 
 The revision identifies the saved configuration. Object property order has no effect on it, while array order is preserved. The effective startup URL is recorded on the session. `flow init` writes a project flow file that is immediately available in the running session.
 
