@@ -31,6 +31,8 @@ const state = join(
 const env = {
 	...process.env,
 	BOATHOOK_STATE_DIR: state,
+	BOATHOOK_LOG_LEVEL: "info",
+	BOATHOOK_LOG_FORMAT: "text",
 	BOATHOOK_CHROME_EXECUTABLE:
 		process.env.BOATHOOK_SMOKE_CHROME ?? process.env.BOATHOOK_CHROME_EXECUTABLE,
 	XDG_RUNTIME_DIR: join(scratch, "run"),
@@ -1383,14 +1385,26 @@ async function checkInstalledPlugin(url: string) {
 	);
 	assert.equal(await Bun.file(importTrace).text(), beforeDiscovery);
 	sessions.add("global-plugin");
-	await run(
-		"start",
-		"global-plugin",
-		"--url",
-		url,
-		"--config-json",
-		JSON.stringify({ plugins: [{ id: installed.id }] }),
+	const started = await command(
+		["--json", "start", "global-plugin", "--url", url, "--config-json", "-"],
+		JSON.stringify({
+			plugins: [
+				{ id: "uninstalled-fixture" },
+				{ id: "missing-path", entry: "./no-such-plugin.ts" },
+				{ id: missingEntry.id },
+				{ id: "disabled-fixture", enabled: false },
+				{ id: installed.id },
+			],
+		}),
 	);
+	assert.equal(started.code, 0, started.out + started.err);
+	assert.deepEqual(JSON.parse(started.out).data.config.plugins, [
+		{ id: installed.id, entry: installed.entry, source: installed.source },
+	]);
+	assert.match(started.err, /\[WARN\].*uninstalled-fixture.*已跳过/);
+	assert.match(started.err, /\[WARN\].*missing-path.*已跳过/);
+	assert.match(started.err, /\[WARN\].*stale-fixture.*已跳过/);
+	assert.doesNotMatch(started.err, /disabled-fixture/);
 	const scoped = ["--session", "global-plugin"];
 	assert.equal(
 		await run(...scoped, "plugin", "installed-fixture", "title"),
@@ -1406,6 +1420,9 @@ async function checkInstalledPlugin(url: string) {
 		JSON.parse(await run("--json", "plugin", installed.id, "help", "title"))
 			.data,
 		help,
+	);
+	console.log(
+		"PASS: missing plugins emit warnings and the remaining plugin loads",
 	);
 }
 

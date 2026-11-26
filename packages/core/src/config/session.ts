@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { CommandError } from "@boathook/plugin-sdk";
 import { z } from "incur";
+import { createLogger } from "../logger.ts";
 import { installedPlugins } from "../plugins/catalog.ts";
 import { pluginIdSchema } from "../plugins/manifest.ts";
 import {
@@ -102,6 +103,7 @@ export async function resolveConfig(
 	projectDir = process.cwd(),
 ): Promise<SessionConfig> {
 	const { plugins: declared, url, browser, login, ...commands } = input;
+	const logger = createLogger();
 	const plugins: PluginSpec[] = [];
 	const enabled = declared.filter(({ enabled }) => enabled);
 	const installed = enabled.some(({ entry }) => !entry)
@@ -110,11 +112,12 @@ export async function resolveConfig(
 	for (const { id, entry, options } of enabled) {
 		if (!entry) {
 			const plugin = installed?.get(id);
-			if (!plugin)
-				throw new CommandError(
-					"PLUGIN_NOT_INSTALLED",
-					`请安装插件 ${id} 或在 JSON 中指定 entry。`,
+			if (!plugin || !(await Bun.file(plugin.entry).exists())) {
+				logger.warn(
+					`找不到插件 ${id} 的安装包，已跳过。请用 boathook plugin install <包名> 安装后重新提交配置。`,
 				);
+				continue;
+			}
 			plugins.push({ id, options, entry: plugin.entry, source: plugin.source });
 			continue;
 		}
@@ -126,9 +129,8 @@ export async function resolveConfig(
 				source: entry,
 			});
 		} catch {
-			throw new CommandError(
-				"PLUGIN_ENTRY_NOT_FOUND",
-				`找不到插件 ${id} 的入口 ${entry}。`,
+			logger.warn(
+				`找不到插件 ${id} 的入口 ${entry}，已跳过。请检查文件路径或项目依赖。`,
 			);
 		}
 	}
